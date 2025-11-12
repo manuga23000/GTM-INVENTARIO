@@ -5,7 +5,7 @@ import { Wrench, Package, BarChart3, Settings } from "lucide-react";
 
 export default function Header() {
   return (
-    <header className="bg-gtm-darker border-b border-gtm-lightgray sticky top-0 z-50">
+    <header className="bg-black border-b border-neutral-800 sticky top-0 z-50">
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           {/* Logo */}
@@ -28,13 +28,15 @@ export default function Header() {
               <Package className="w-5 h-5" />
               <span>Lubricentro</span>
             </Link>
+
             <Link
-              href="/herramientas"
+              href="/inventario-taller"
               className="flex items-center space-x-2 text-gray-300 hover:text-gtm-orange transition-colors"
             >
               <Wrench className="w-5 h-5" />
-              <span>Herramientas</span>
+              <span>Inventario Taller</span>
             </Link>
+
             <Link
               href="/reportes"
               className="flex items-center space-x-2 text-gray-300 hover:text-gtm-orange transition-colors"
@@ -42,6 +44,7 @@ export default function Header() {
               <BarChart3 className="w-5 h-5" />
               <span>Reportes</span>
             </Link>
+
             <Link
               href="/configuracion"
               className="flex items-center space-x-2 text-gray-300 hover:text-gtm-orange transition-colors"

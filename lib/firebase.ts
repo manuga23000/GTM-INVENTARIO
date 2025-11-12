@@ -4,7 +4,6 @@ import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
 // Configuración de Firebase
-// TODO: Agregar las credenciales reales desde Firebase Console
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -19,7 +18,8 @@ const app =
   getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
 // Exportar servicios de Firebase
-export const db = getFirestore(app);
+// 👇 ESTE ES EL CAMBIO: agregamos 'gtm2' como segundo parámetro
+export const db = getFirestore(app, "gtm2");
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 

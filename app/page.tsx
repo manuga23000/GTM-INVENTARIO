@@ -10,7 +10,7 @@ export default function Home() {
           Sistema de Inventario GTM
         </h1>
         <p className="text-gray-400">
-          Gestión completa de lubricentro y herramientas del taller
+          Gestión completa de lubricentro y taller mecánico
         </p>
       </div>
 
@@ -35,7 +35,7 @@ export default function Home() {
             <TrendingUp className="w-5 h-5 text-green-400" />
           </div>
           <h3 className="text-2xl font-bold text-white mb-1">87</h3>
-          <p className="text-gray-400 text-sm">Herramientas</p>
+          <p className="text-gray-400 text-sm">Items de Taller</p>
         </div>
 
         <div className="card hover:scale-105 transition-transform cursor-pointer">
@@ -79,7 +79,7 @@ export default function Home() {
         </Link>
 
         <Link
-          href="/herramientas"
+          href="/inventario-taller"
           className="card hover:border-blue-400 transition-all group"
         >
           <div className="flex items-center space-x-4">
@@ -88,10 +88,10 @@ export default function Home() {
             </div>
             <div>
               <h2 className="text-xl font-bold text-white mb-1">
-                Herramientas
+                Inventario Taller
               </h2>
               <p className="text-gray-400">
-                Control de herramientas del taller
+                Herramientas, equipos, oficina y más
               </p>
             </div>
           </div>

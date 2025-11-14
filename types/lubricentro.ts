@@ -22,5 +22,6 @@ export const CATEGORIAS_LUBRICENTRO = [
   "Filtros",
   "Lubricantes",
   "Aditivos",
+  "Líquido de freno",
   "Otros",
 ] as const;

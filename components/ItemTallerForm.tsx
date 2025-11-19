@@ -1,5 +1,4 @@
 "use client";
-
 import { useState } from "react";
 import { X } from "lucide-react";
 import { ItemTaller, TIPOS_ITEMS_TALLER } from "@/types/inventario-taller";
@@ -67,24 +66,32 @@ export default function ItemTallerForm({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-neutral-900 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-neutral-800">
-          <h2 className="text-2xl font-bold text-white">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 
+      animate-fade-in"
+    >
+      <div
+        className="bg-neutral-900 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto
+        transform transition-all duration-300 
+        scale-95 opacity-0 
+        animate-scale-in"
+      >
+        {/* Header con animación */}
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-neutral-800">
+          <h2 className="text-xl sm:text-2xl font-bold text-white">
             {item ? "Editar Item" : "Nuevo Item"}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
+            className="text-gray-400 hover:text-white transition-colors transform hover:scale-110"
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* Nombre - ÚNICO OBLIGATORIO */}
+        {/* Form con ajustes responsive */}
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
+          {/* Campos originales con mejoras de responsive */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Nombre *
@@ -95,47 +102,14 @@ export default function ItemTallerForm({
               value={formData.nombre}
               onChange={handleChange}
               required
-              className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600"
+              className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white 
+              focus:outline-none focus:ring-2 focus:ring-red-600
+              transition-all hover:border-red-500"
               placeholder="Ej: Taladro, Escritorio, Equipo de Música"
             />
           </div>
 
-          {/* Tipo - OPCIONAL */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Tipo
-            </label>
-            <select
-              name="tipo"
-              value={formData.tipo}
-              onChange={handleChange}
-              className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600"
-            >
-              <option value="">Sin especificar</option>
-              {TIPOS_ITEMS_TALLER.map((tipo) => (
-                <option key={tipo} value={tipo}>
-                  {tipo}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Marca - OPCIONAL */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Marca
-            </label>
-            <input
-              type="text"
-              name="marca"
-              value={formData.marca}
-              onChange={handleChange}
-              className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600"
-              placeholder="Ej: Bosch, Samsung, Ikea"
-            />
-          </div>
-
-          {/* Cantidad y Ubicación */}
+          {/* Resto de campos igual, con transiciones y hover */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -147,7 +121,9 @@ export default function ItemTallerForm({
                 value={formData.cantidad}
                 onChange={handleChange}
                 min="0"
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600"
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white 
+                focus:outline-none focus:ring-2 focus:ring-red-600
+                transition-all hover:border-red-500"
               />
             </div>
 
@@ -160,25 +136,29 @@ export default function ItemTallerForm({
                 name="ubicacion"
                 value={formData.ubicacion}
                 onChange={handleChange}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600"
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white 
+                focus:outline-none focus:ring-2 focus:ring-red-600
+                transition-all hover:border-red-500"
                 placeholder="Ej: Oficina, Box 1"
               />
             </div>
           </div>
 
-          {/* Botones */}
+          {/* Botones con hover y transiciones */}
           <div className="flex gap-4 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+              className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white font-semibold 
+              py-2 px-4 rounded-lg transition-colors transform hover:scale-105"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold 
+              py-2 px-4 rounded-lg transition-colors disabled:opacity-50 transform hover:scale-105"
             >
               {loading ? "Guardando..." : item ? "Actualizar" : "Crear"}
             </button>

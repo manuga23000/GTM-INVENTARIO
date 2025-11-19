@@ -23,7 +23,7 @@ export default function Home() {
             </div>
             <TrendingUp className="w-5 h-5 text-green-400" />
           </div>
-          <h3 className="text-2xl font-bold text-white mb-1">245</h3>
+          <h3 className="text-2xl font-bold text-white mb-1">178</h3>
           <p className="text-gray-400 text-sm">Productos Lubricentro</p>
         </div>
 
@@ -34,7 +34,7 @@ export default function Home() {
             </div>
             <TrendingUp className="w-5 h-5 text-green-400" />
           </div>
-          <h3 className="text-2xl font-bold text-white mb-1">87</h3>
+          <h3 className="text-2xl font-bold text-white mb-1">63</h3>
           <p className="text-gray-400 text-sm">Items de Taller</p>
         </div>
 
@@ -44,7 +44,7 @@ export default function Home() {
               <AlertCircle className="w-6 h-6 text-yellow-400" />
             </div>
           </div>
-          <h3 className="text-2xl font-bold text-white mb-1">12</h3>
+          <h3 className="text-2xl font-bold text-white mb-1">9</h3>
           <p className="text-gray-400 text-sm">Stock Bajo</p>
         </div>
 
@@ -54,7 +54,7 @@ export default function Home() {
               <TrendingUp className="w-6 h-6 text-green-400" />
             </div>
           </div>
-          <h3 className="text-2xl font-bold text-white mb-1">$892K</h3>
+          <h3 className="text-2xl font-bold text-white mb-1">$0</h3>
           <p className="text-gray-400 text-sm">Valor Total Inventario</p>
         </div>
       </div>

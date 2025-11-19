@@ -80,22 +80,25 @@ export async function eliminarProductoLubricentro(id: string) {
 // Obtener todos los productos
 export async function obtenerProductosLubricentro() {
   try {
+    console.log("Attempting to fetch lubricentro products from database:", db);
     const q = query(
       collection(db, "lubricentro"),
       orderBy("createdAt", "desc")
     );
     const querySnapshot = await getDocs(q);
+    console.log("Query snapshot:", querySnapshot);
     const productos = querySnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     })) as ProductoLubricentro[];
 
+    console.log("Fetched productos:", productos);
     return {
       success: true,
       data: productos,
     };
   } catch (error) {
-    console.error("Error al obtener productos:", error);
+    console.error("Detailed error al obtener productos:", error);
     return {
       success: false,
       error: "No se pudieron obtener los productos",

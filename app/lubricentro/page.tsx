@@ -177,7 +177,157 @@ export default function LubricentroInventario() {
         ) : (
           <div className="bg-neutral-900 rounded-lg border border-neutral-800 overflow-hidden animate-fade-in">
             {/* Tabla existente */}
-            <table className="w-full">{/* Contenido de la tabla */}</table>
+            <table className="w-full">
+              {/* Tabla de Productos */}
+              {loading ? (
+                <div className="p-6 animate-fade-in">
+                  <SkeletonLoader />
+                </div>
+              ) : filteredProductos.length === 0 ? (
+                <div className="bg-neutral-900 rounded-lg p-12 text-center border border-neutral-800 animate-scale-in">
+                  <Package className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                  <p className="text-gray-400 text-lg">
+                    {searchTerm || selectedCategory !== "Todos"
+                      ? "No se encontraron productos con esos filtros"
+                      : "No hay productos registrados"}
+                  </p>
+                  <button
+                    onClick={handleNuevoProducto}
+                    className="mt-4 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors transform hover:scale-105"
+                  >
+                    Agregar Primer Producto
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-neutral-900 rounded-lg border border-neutral-800 overflow-x-auto animate-fade-in">
+                  <table className="w-full">
+                    <thead className="bg-neutral-800 border-b border-neutral-700">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          Código
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          Descripción
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          Marca
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          Categoría
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          Stock
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          P. Costo
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          P. Venta
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          Acciones
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-800">
+                      {filteredProductos.map((producto) => (
+                        <tr
+                          key={producto.id}
+                          className="hover:bg-neutral-800/50 transition-colors"
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-300">
+                            {producto.codigo || "-"}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm text-white font-medium">
+                              {producto.descripcion || "-"}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                            {producto.marca || "-"}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span
+                              className={`
+                  inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                  ${
+                    producto.categoria === "Aceites"
+                      ? "bg-blue-500/20 text-blue-400"
+                      : producto.categoria === "Aditivos"
+                      ? "bg-green-500/20 text-green-400"
+                      : producto.categoria === "Refrigerantes"
+                      ? "bg-purple-500/20 text-purple-400"
+                      : "bg-neutral-700 text-neutral-300"
+                  }
+                `}
+                            >
+                              {producto.categoria || "-"}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <span
+                              className={`
+                  font-semibold
+                  ${
+                    (producto.stock || 0) <= (producto.stockMinimo || 0)
+                      ? "text-red-500"
+                      : (producto.stock || 0) <=
+                        (producto.stockMinimo || 0) * 1.5
+                      ? "text-yellow-500"
+                      : "text-green-500"
+                  }
+                `}
+                            >
+                              {producto.stock || 0} /{" "}
+                              {producto.stockMinimo || 0}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
+                            {producto.precioCosto
+                              ? new Intl.NumberFormat("es-AR", {
+                                  style: "currency",
+                                  currency: "ARS",
+                                  minimumFractionDigits: 0,
+                                }).format(producto.precioCosto)
+                              : "-"}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
+                            {producto.precioVenta
+                              ? new Intl.NumberFormat("es-AR", {
+                                  style: "currency",
+                                  currency: "ARS",
+                                  minimumFractionDigits: 0,
+                                }).format(producto.precioVenta)
+                              : "-"}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => handleEditarProducto(producto)}
+                                className="text-red-500 hover:text-red-700 transition-colors"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleEliminarProducto(
+                                    producto.id!,
+                                    producto.descripcion || "Producto"
+                                  )
+                                }
+                                className="text-red-500 hover:text-red-700 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </table>
           </div>
         )}
       </div>

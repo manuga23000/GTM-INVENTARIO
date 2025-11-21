@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import {
   ProductoLubricentro,
@@ -21,6 +22,7 @@ export default function ProductoLubricentroForm({
   onClose,
   onSuccess,
 }: ProductoLubricentroFormProps) {
+  const [mounted, setMounted] = useState(false);
   const [formData, setFormData] = useState({
     codigo: producto?.codigo || "",
     descripcion: producto?.descripcion || "",
@@ -33,6 +35,11 @@ export default function ProductoLubricentroForm({
     ubicacion: producto?.ubicacion || "",
   });
   const [loading, setLoading] = useState(false);
+
+  // Ensure portals only render on client to avoid hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,16 +81,16 @@ export default function ProductoLubricentroForm({
     }));
   };
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 
-      animate-fade-in"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4 animate-fade-in"
+      role="dialog"
+      aria-modal="true"
     >
       <div
-        className="bg-neutral-900 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto
-        transform transition-all duration-300 
-        scale-95 opacity-0 
-        animate-scale-in"
+        className="bg-neutral-900 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto transform transition-all duration-300 scale-95 opacity-0 animate-scale-in"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-neutral-800">
@@ -124,6 +131,7 @@ export default function ProductoLubricentroForm({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -7,6 +7,9 @@ module.exports = {
   ],
   theme: {
     extend: {
+      zIndex: {
+        9999: "9999", // para modales y overlays
+      },
       colors: {
         "gtm-dark": "#0f0f0f",
         "gtm-darker": "#0a0a0a",

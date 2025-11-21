@@ -1,6 +1,6 @@
 import { getInventoryCounts } from "@/actions/getInventoryCounts";
 import Link from "next/link";
-import { Package, Wrench, AlertCircle, TrendingUp } from "lucide-react";
+import { Package, Wrench, AlertCircle, TrendingUp, FileText } from "lucide-react";
 
 export default async function Home() {
   const {
@@ -82,7 +82,7 @@ export default async function Home() {
       </div>
 
       {/* Accesos rápidos */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Link
           href="/lubricentro"
           className="bg-neutral-900 border border-red-600/30 rounded-lg p-6 hover:border-red-600 transition-all group flex items-center space-x-6"
@@ -112,6 +112,19 @@ export default async function Home() {
             <p className="text-gray-400">
               Herramientas, equipos, oficina y más
             </p>
+          </div>
+        </Link>
+
+        <Link
+          href="/anotaciones"
+          className="bg-neutral-900 border border-red-600/30 rounded-lg p-6 hover:border-red-600 transition-all group flex items-center space-x-6"
+        >
+          <div className="bg-red-600 p-4 rounded-lg group-hover:scale-110 transition-transform">
+            <FileText className="w-8 h-8 text-white" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-white mb-1">Anotaciones</h2>
+            <p className="text-gray-400">Crear y ver anotaciones</p>
           </div>
         </Link>
       </div>

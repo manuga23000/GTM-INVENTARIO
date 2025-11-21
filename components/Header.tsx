@@ -4,8 +4,7 @@ import { useState } from "react"; // Añadido para menú móvil
 import {
   Wrench,
   Package,
-  BarChart3,
-  Settings,
+  FileText,
   Menu,
   X, // Añadidos para menú móvil
 } from "lucide-react";
@@ -15,7 +14,7 @@ export default function Header() {
 
   return (
     <header className="bg-black border-b border-neutral-800 sticky top-0 z-50 animate-fade-in">
-      <div className="container mx-auto px-4 py-4 max-w-screen-xl">
+      <div className="container mx-auto px-4 py-4 max-w-7xl">
         <div className="flex items-center justify-between">
           {/* Logo */}
           <Link
@@ -50,19 +49,11 @@ export default function Header() {
             </Link>
 
             <Link
-              href="/reportes"
+              href="/anotaciones"
               className="flex items-center space-x-2 text-gray-300 hover:text-gtm-orange transition-colors transform hover:scale-105"
             >
-              <BarChart3 className="w-5 h-5" />
-              <span>Reportes</span>
-            </Link>
-
-            <Link
-              href="/configuracion"
-              className="flex items-center space-x-2 text-gray-300 hover:text-gtm-orange transition-colors transform hover:scale-105"
-            >
-              <Settings className="w-5 h-5" />
-              <span>Config</span>
+              <FileText className="w-5 h-5" />
+              <span>Anotaciones</span>
             </Link>
           </nav>
 
@@ -113,20 +104,12 @@ export default function Header() {
                 <span>Inventario Taller</span>
               </Link>
               <Link
-                href="/reportes"
+                href="/anotaciones"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center space-x-2 text-gray-300 hover:text-gtm-orange transition-colors"
               >
-                <BarChart3 className="w-5 h-5" />
-                <span>Reportes</span>
-              </Link>
-              <Link
-                href="/configuracion"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center space-x-2 text-gray-300 hover:text-gtm-orange transition-colors"
-              >
-                <Settings className="w-5 h-5" />
-                <span>Config</span>
+                <FileText className="w-5 h-5" />
+                <span>Anotaciones</span>
               </Link>
             </nav>
           </div>

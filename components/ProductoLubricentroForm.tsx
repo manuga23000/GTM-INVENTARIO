@@ -10,7 +10,6 @@ import {
   crearProductoLubricentro,
   actualizarProductoLubricentro,
 } from "@/actions/lubricentro";
-import CameraOCRButton from "./CameraOCRButton";
 
 interface ProductoLubricentroFormProps {
   producto?: ProductoLubricentro;
@@ -47,10 +46,7 @@ export default function ProductoLubricentroForm({
 
   const confirmClose = () => {
     if (loading) return; // no cerrar mientras guarda
-    if (
-      !isDirty ||
-      confirm("Hay cambios sin guardar. ¿Deseás salir igualmente?")
-    ) {
+    if (!isDirty || confirm("Hay cambios sin guardar. ¿Deseás salir igualmente?")) {
       onClose();
     }
   };
@@ -171,10 +167,7 @@ export default function ProductoLubricentroForm({
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-neutral-800">
-          <h2
-            id="modal-title"
-            className="text-xl sm:text-2xl font-bold text-white"
-          >
+          <h2 id="modal-title" className="text-xl sm:text-2xl font-bold text-white">
             {producto ? "Editar Producto" : "Nuevo Producto"}
           </h2>
           <button
@@ -190,9 +183,7 @@ export default function ProductoLubricentroForm({
           {/* Código y Descripción */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Código
-              </label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Código</label>
               <input
                 type="text"
                 name="codigo"
@@ -201,20 +192,9 @@ export default function ProductoLubricentroForm({
                 className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
                 placeholder="Ej: A-123, 5W30-XX"
               />
-
-              {/* 👇 BOTÓN DE CÁMARA CON OCR */}
-              <div className="mt-2">
-                <CameraOCRButton
-                  onTextDetected={(text) => {
-                    setFormData({ ...formData, codigo: text });
-                  }}
-                />
-              </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Descripción *
-              </label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Descripción *</label>
               <input
                 type="text"
                 name="descripcion"
@@ -230,9 +210,7 @@ export default function ProductoLubricentroForm({
           {/* Marca y Categoría */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Marca
-              </label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Marca</label>
               <input
                 type="text"
                 name="marca"
@@ -243,9 +221,7 @@ export default function ProductoLubricentroForm({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Categoría
-              </label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Categoría</label>
               <select
                 name="categoria"
                 value={formData.categoria}
@@ -265,9 +241,7 @@ export default function ProductoLubricentroForm({
           {/* Stock y Stock mínimo */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Stock
-              </label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Stock</label>
               <input
                 type="number"
                 name="stock"
@@ -278,9 +252,7 @@ export default function ProductoLubricentroForm({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Stock mínimo
-              </label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Stock mínimo</label>
               <input
                 type="number"
                 name="stockMinimo"
@@ -295,9 +267,7 @@ export default function ProductoLubricentroForm({
           {/* Precios */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Precio costo
-              </label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Precio costo</label>
               <input
                 type="number"
                 name="precioCosto"
@@ -309,9 +279,7 @@ export default function ProductoLubricentroForm({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Precio venta
-              </label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Precio venta</label>
               <input
                 type="number"
                 name="precioVenta"
@@ -326,9 +294,7 @@ export default function ProductoLubricentroForm({
 
           {/* Ubicación */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Ubicación
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Ubicación</label>
             <input
               type="text"
               name="ubicacion"

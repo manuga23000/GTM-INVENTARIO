@@ -135,7 +135,7 @@ export default function AnotacionForm({
 
   return createPortal(
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4 animate-fade-in overflow-y-auto"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-9999 p-4 animate-fade-in overflow-y-auto"
       role="dialog"
       aria-modal="true"
       onClick={(e) => {

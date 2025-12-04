@@ -16,8 +16,15 @@ export default function LubricentroInventario() {
   >([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("Todos");
+  const [selectedFilterType, setSelectedFilterType] = useState(
+    "Todos"
+  );
   const [showForm, setShowForm] = useState(false);
   const [editingProducto, setEditingProducto] = useState<
+    ProductoLubricentro | undefined
+  >(undefined);
+  // Guardamos el último producto creado/actualizado para autocompletar el próximo
+  const [ultimoProducto, setUltimoProducto] = useState<
     ProductoLubricentro | undefined
   >(undefined);
   const [loading, setLoading] = useState(true);
@@ -40,23 +47,73 @@ export default function LubricentroInventario() {
     let filtered = productos;
 
     if (searchTerm) {
-      filtered = filtered.filter(
-        (p) =>
-          p.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.descripcion.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.marca.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      const q = searchTerm.toLowerCase();
+      filtered = filtered.filter((p) => {
+        const matchBasico =
+          (p.codigo || "").toLowerCase().includes(q) ||
+          (p.descripcion || "").toLowerCase().includes(q) ||
+          (p.marca || "").toLowerCase().includes(q);
+        const matchAplicaciones = Array.isArray((p as any).aplicaciones)
+          ? ((p as any).aplicaciones as string[]).some((a) =>
+              (a || "").toLowerCase().includes(q)
+            )
+          : false;
+        // Si es categoría Filtros, considerar descripcion como lista separada por comas
+        const matchAplicacionesEnDescripcion = (p.categoria === "Filtros")
+          ? (p.descripcion || "")
+              .split(",")
+              .map((s) => s.trim().toLowerCase())
+              .some((token) => token.includes(q))
+          : false;
+        return matchBasico || matchAplicaciones || matchAplicacionesEnDescripcion;
+      });
     }
 
     if (selectedCategory !== "Todos") {
       filtered = filtered.filter((p) => p.categoria === selectedCategory);
     }
 
+    // Subfiltro para la categoría Filtros
+    if (selectedCategory === "Filtros" && selectedFilterType !== "Todos") {
+      const type = selectedFilterType.toLowerCase();
+      const includesKeyword = (p: ProductoLubricentro, keywords: string[]) => {
+        const haystack = `${p.descripcion || ""} ${p.codigo || ""} ${
+          p.marca || ""
+        }`.toLowerCase();
+        return keywords.some((kw) => haystack.includes(kw));
+      };
+
+      const mapKeywords: Record<string, string[]> = {
+        aire: ["aire"],
+        aceite: ["aceite", "aeite", "oil"],
+        combustible: ["combustible", "nafta", "diesel"],
+        habitáculo: ["habitáculo", "habitaculo", "cabina", "polen"],
+        habitaculo: ["habitáculo", "habitaculo", "cabina", "polen"],
+      };
+
+      filtered = filtered.filter((p: any) => {
+        const t = (p?.tipoFiltro || "").toString().toLowerCase();
+        if (t) {
+          // comparar normalizando acentos sencillamente
+          const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "");
+          return norm(t) === norm(type);
+        }
+        const keywords = mapKeywords[type] || mapKeywords["aire"]; // fallback por si acaso
+        return includesKeyword(p, keywords);
+      });
+    }
+
     setFilteredProductos(filtered);
-  }, [searchTerm, selectedCategory, productos]);
+  }, [searchTerm, selectedCategory, selectedFilterType, productos]);
 
   const handleNuevoProducto = () => {
-    setEditingProducto(undefined);
+    // Si hay un último producto, usamos sus datos como base pero SIN id para que sea un nuevo registro
+    if (ultimoProducto) {
+      const { id, ...resto } = ultimoProducto;
+      setEditingProducto(resto as ProductoLubricentro);
+    } else {
+      setEditingProducto(undefined);
+    }
     setShowForm(true);
   };
 
@@ -136,7 +193,12 @@ export default function LubricentroInventario() {
                 (cat) => (
                   <button
                     key={cat}
-                    onClick={() => setSelectedCategory(cat)}
+                    onClick={() => {
+                      setSelectedCategory(cat);
+                      if (cat !== "Filtros") {
+                        setSelectedFilterType("Todos");
+                      }
+                    }}
                     className={`
                     px-3 py-1.5 rounded-lg text-xs font-medium transition-colors
                     ${
@@ -151,6 +213,35 @@ export default function LubricentroInventario() {
                 )
               )}
             </div>
+
+            {/* Subfiltro visible solo para Filtros */}
+            {selectedCategory === "Filtros" && (
+              <div className="mt-4">
+                <p className="text-xs font-semibold text-gray-400 mb-2">
+                  TIPO DE FILTRO:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {["Todos", "Aire", "Aceite", "Combustible", "Habitáculo"].map(
+                    (tipo) => (
+                      <button
+                        key={tipo}
+                        onClick={() => setSelectedFilterType(tipo)}
+                        className={`
+                          px-3 py-1.5 rounded-lg text-xs font-medium transition-colors
+                          ${
+                            selectedFilterType === tipo
+                              ? "bg-blue-600 text-white"
+                              : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
+                          }
+                        `}
+                      >
+                        {tipo}
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -262,23 +353,8 @@ export default function LubricentroInventario() {
                             {producto.categoria || "-"}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <span
-                            className={`
-                  font-semibold
-                  ${
-                    (producto.stock || 0) <= (producto.stockMinimo || 0)
-                      ? "text-red-500"
-                      : (producto.stock || 0) <=
-                        (producto.stockMinimo || 0) * 1.5
-                      ? "text-yellow-500"
-                      : "text-green-500"
-                  }
-                `}
-                          >
-                            {producto.stock || 0} /{" "}
-                            {producto.stockMinimo || 0}
-                          </span>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
+                          <span className="font-semibold">{producto.stock || 0}</span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
                           {producto.precioCosto
@@ -334,7 +410,10 @@ export default function LubricentroInventario() {
         <ProductoLubricentroForm
           producto={editingProducto}
           onClose={handleCloseForm}
-          onSuccess={cargarProductos}
+          onSuccess={(productoGuardado) => {
+            setUltimoProducto(productoGuardado);
+            cargarProductos();
+          }}
         />
       )}
     </div>

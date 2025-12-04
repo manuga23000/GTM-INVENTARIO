@@ -14,7 +14,7 @@ import {
 interface ProductoLubricentroFormProps {
   producto?: ProductoLubricentro;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (producto: ProductoLubricentro) => void;
 }
 
 export default function ProductoLubricentroForm({
@@ -31,8 +31,8 @@ export default function ProductoLubricentroForm({
     descripcion: producto?.descripcion || "",
     marca: producto?.marca || "",
     categoria: producto?.categoria || "",
+    tipoFiltro: (producto as any)?.tipoFiltro || "",
     stock: producto?.stock || 0,
-    stockMinimo: producto?.stockMinimo || 0,
     precioCosto: producto?.precioCosto || 0,
     precioVenta: producto?.precioVenta || 0,
     ubicacion: producto?.ubicacion || "",
@@ -122,14 +122,19 @@ export default function ProductoLubricentroForm({
       }
 
       if (result.success) {
-        onSuccess();
+        // Devolver los datos usados para guardar (sirve para autocompletar el próximo nuevo)
+        const productoGuardado = {
+          ...(producto || ({} as ProductoLubricentro)),
+          ...formData,
+        } as ProductoLubricentro;
+        onSuccess(productoGuardado);
         onClose();
       } else {
         alert("Error al guardar el producto");
       }
     } catch (error) {
-      console.error("Error:", error);
-      alert("Error al guardar el producto");
+      console.error(error);
+      alert("Ocurrió un error inesperado");
     } finally {
       setLoading(false);
     }
@@ -141,10 +146,10 @@ export default function ProductoLubricentroForm({
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: ["stock", "stockMinimo", "precioCosto", "precioVenta"].includes(
+      [name]: ["stock", "precioCosto", "precioVenta"].includes(
         name
       )
-        ? parseFloat(value) || 0
+        ? Number(value)
         : value,
     }));
   };
@@ -180,7 +185,7 @@ export default function ProductoLubricentroForm({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
-          {/* Código y Descripción */}
+          {/* Código y Marca */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Código</label>
@@ -194,6 +199,21 @@ export default function ProductoLubricentroForm({
               />
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Marca</label>
+              <input
+                type="text"
+                name="marca"
+                value={formData.marca}
+                onChange={handleChange}
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
+                placeholder="Ej: Shell, Total, YPF"
+              />
+            </div>
+          </div>
+
+          {/* Descripción y Categoría */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Descripción *</label>
               <input
                 type="text"
@@ -203,21 +223,6 @@ export default function ProductoLubricentroForm({
                 required
                 className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
                 placeholder="Ej: Aceite sintético 5W30"
-              />
-            </div>
-          </div>
-
-          {/* Marca y Categoría */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Marca</label>
-              <input
-                type="text"
-                name="marca"
-                value={formData.marca}
-                onChange={handleChange}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
-                placeholder="Ej: Shell, Total, YPF"
               />
             </div>
             <div>
@@ -238,7 +243,30 @@ export default function ProductoLubricentroForm({
             </div>
           </div>
 
-          {/* Stock y Stock mínimo */}
+          {/* Tipo de Filtro (solo visible para Filtros) */}
+          {formData.categoria === "Filtros" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Tipo de filtro</label>
+                <select
+                  name="tipoFiltro"
+                  value={(formData as any).tipoFiltro}
+                  onChange={handleChange}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
+                >
+                  <option value="">Seleccionar tipo</option>
+                  <option value="Aire">Aire</option>
+                  <option value="Aceite">Aceite</option>
+                  <option value="Combustible">Combustible</option>
+                  <option value="Habitáculo">Habitáculo</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Las aplicaciones ahora se cargan en el campo Descripción separadas por comas */}
+
+          {/* Stock y Ubicación */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Stock</label>
@@ -252,14 +280,14 @@ export default function ProductoLubricentroForm({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Stock mínimo</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Ubicación</label>
               <input
-                type="number"
-                name="stockMinimo"
-                value={formData.stockMinimo}
+                type="text"
+                name="ubicacion"
+                value={formData.ubicacion}
                 onChange={handleChange}
-                min="0"
                 className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
+                placeholder="Ej: Estante A, Depósito"
               />
             </div>
           </div>
@@ -292,18 +320,7 @@ export default function ProductoLubricentroForm({
             </div>
           </div>
 
-          {/* Ubicación */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Ubicación</label>
-            <input
-              type="text"
-              name="ubicacion"
-              value={formData.ubicacion}
-              onChange={handleChange}
-              className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
-              placeholder="Ej: Estante A, Depósito"
-            />
-          </div>
+          
 
           {/* Botones */}
           <div className="flex gap-4 pt-4">

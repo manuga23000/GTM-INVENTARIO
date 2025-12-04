@@ -13,7 +13,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { Anotacion, TIPOS_ANOTACION } from "@/types/anotaciones";
-import { obtenerAnotaciones, eliminarAnotacion } from "@/actions/anotaciones";
+import { obtenerAnotaciones, eliminarAnotacion, cancelarAnotacion } from "@/actions/anotaciones";
 import AnotacionForm from "@/components/AnotacionForm";
 
 export default function AnotacionesPage() {
@@ -113,13 +113,25 @@ export default function AnotacionesPage() {
 
   // Eliminar anotación
   const handleEliminar = async (id: string, titulo: string) => {
-    if (confirm(`¿Estás seguro de eliminar "${titulo}"?`)) {
-      const result = await eliminarAnotacion(id);
-      if (result.success) {
-        cargarAnotaciones();
-      } else {
-        alert("Error al eliminar la anotación");
-      }
+    // Modal simple por prompt: 1) Cancelar (restablecer stock) 2) Eliminar (sin tocar stock)
+    const opcion = prompt(
+      `Acción sobre "${titulo}":\n- Escribí 1 para CANCELAR (repone stock y elimina)\n- Escribí 2 para ELIMINAR (sin reponer stock)`,
+      "1"
+    );
+    if (opcion === null) return;
+    if (opcion !== "1" && opcion !== "2") {
+      alert("Opción inválida. Usa 1 o 2.");
+      return;
+    }
+
+    const useCancelar = opcion === "1";
+    const result = useCancelar
+      ? await cancelarAnotacion(id)
+      : await eliminarAnotacion(id);
+    if (result.success) {
+      cargarAnotaciones();
+    } else {
+      alert(result.error || "Error al procesar la solicitud");
     }
   };
 

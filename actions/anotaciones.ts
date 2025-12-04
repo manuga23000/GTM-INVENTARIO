@@ -13,26 +13,68 @@ import {
   Timestamp,
   updateDoc,
   serverTimestamp,
+  runTransaction,
 } from "firebase/firestore";
 import { Anotacion } from "@/types/anotaciones";
 
 export async function crearAnotacion(data: Omit<Anotacion, "id">) {
   try {
-    const ref = await addDoc(collection(db, "anotaciones"), {
-      fecha: data.fecha ? Timestamp.fromDate(new Date(data.fecha)) : serverTimestamp(),
-      tipo: data.tipo,
-      titulo: data.titulo,
-      descripcion: data.descripcion || "",
-      items: data.items || [],
-      total: data.total ?? 0,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+    // Ejecutamos todo en una transacción para mantener stock consistente
+    const result = await runTransaction(db, async (tx) => {
+      // 1) Crear la anotación (preparamos el ref manualmente para poder usar tx.set)
+      const anotacionesCol = collection(db, "anotaciones");
+      const anotacionRef = doc(anotacionesCol);
+
+      // 2) Si es venta de LUBRICENTRO, descontar stock por cada item con productoId
+      if (data.tipo === "LUBRICENTRO" && Array.isArray(data.items)) {
+        for (const item of data.items) {
+          const cantidad = item.cantidad ?? 0;
+          const productoId = (item as any).productoId as string | undefined;
+          if (!productoId || !cantidad || cantidad <= 0) continue;
+
+          const productoRef = doc(db, "lubricentro", productoId);
+          const productoSnap = await tx.get(productoRef);
+          if (!productoSnap.exists()) {
+            throw new Error(`Producto no encontrado (id: ${productoId})`);
+          }
+          const producto = productoSnap.data() as any;
+          const stockActual = typeof producto.stock === "number" ? producto.stock : 0;
+          if (stockActual < cantidad) {
+            throw new Error(
+              `Stock insuficiente para "${producto.descripcion ?? producto.codigo ?? productoId}". Disponible: ${stockActual}, solicitado: ${cantidad}`
+            );
+          }
+          // Descontar
+          tx.update(productoRef, {
+            stock: stockActual - cantidad,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
+      // 3) Guardar la anotación
+      const payload = {
+        fecha: data.fecha
+          ? Timestamp.fromDate(new Date(data.fecha))
+          : serverTimestamp(),
+        tipo: data.tipo,
+        titulo: data.titulo,
+        descripcion: data.descripcion || "",
+        items: data.items || [],
+        total: data.total ?? 0,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      tx.set(anotacionRef, payload);
+
+      return anotacionRef.id;
     });
 
-    const snap = await getDoc(ref);
+    // Leer la anotación creada para normalizar la respuesta
+    const snap = await getDoc(doc(db, "anotaciones", result));
     const d = snap.data() as any;
     const anotacionCreada: Anotacion = {
-      id: ref.id,
+      id: snap.id,
       fecha:
         d?.fecha instanceof Timestamp
           ? d.fecha.toDate().toISOString()
@@ -49,7 +91,9 @@ export async function crearAnotacion(data: Omit<Anotacion, "id">) {
     return { success: true, data: anotacionCreada };
   } catch (error) {
     console.error("Error al crear anotación:", error);
-    return { success: false, error: "Error al crear la anotación" };
+    const message =
+      error instanceof Error ? error.message : "Error al crear la anotación";
+    return { success: false, error: message };
   }
 }
 
@@ -159,5 +203,50 @@ export async function eliminarAnotacion(id: string) {
   } catch (error) {
     console.error("Error al eliminar anotación:", error);
     return { success: false, error: "Error al eliminar la anotación" };
+  }
+}
+
+// Cancelar una anotación: restablece stock (si corresponde) y elimina la anotación
+export async function cancelarAnotacion(id: string) {
+  try {
+    await runTransaction(db, async (tx) => {
+      const anotRef = doc(db, "anotaciones", id);
+      const anotSnap = await tx.get(anotRef);
+      if (!anotSnap.exists()) {
+        throw new Error("Anotación no encontrada");
+      }
+      const d = anotSnap.data() as any;
+
+      // Si fue de LUBRICENTRO, reponer stock por cada item con productoId
+      if (d?.tipo === "LUBRICENTRO" && Array.isArray(d?.items)) {
+        for (const item of d.items) {
+          const cantidad = typeof item?.cantidad === "number" ? item.cantidad : 0;
+          const productoId = item?.productoId as string | undefined;
+          if (!productoId || !cantidad || cantidad <= 0) continue;
+
+          const productoRef = doc(db, "lubricentro", productoId);
+          const prodSnap = await tx.get(productoRef);
+          if (!prodSnap.exists()) {
+            // Si el producto no existe, seguimos (no bloqueamos toda la cancelación)
+            continue;
+          }
+          const prod = prodSnap.data() as any;
+          const stockActual = typeof prod.stock === "number" ? prod.stock : 0;
+          tx.update(productoRef, {
+            stock: stockActual + cantidad,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
+      // Eliminar la anotación tras reponer stock
+      tx.delete(anotRef);
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error al cancelar anotación:", error);
+    const message = error instanceof Error ? error.message : "Error al cancelar la anotación";
+    return { success: false, error: message };
   }
 }

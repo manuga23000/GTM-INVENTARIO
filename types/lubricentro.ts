@@ -8,10 +8,13 @@ export interface ProductoLubricentro {
   marca: string;
   categoria: string;
   stock: number;
-  stockMinimo: number;
   precioCosto: number;
   precioVenta: number;
   ubicacion?: string;
+  // Modelos/vehículos para los que aplica (solo relevante para Filtros)
+  aplicaciones?: string[];
+  // Tipo de filtro (solo si categoria === "Filtros")
+  tipoFiltro?: "Aire" | "Aceite" | "Combustible" | "Habitáculo";
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }

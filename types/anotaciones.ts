@@ -16,6 +16,8 @@ export interface ItemAnotacion {
   descripcion: string;
   precio?: number;
   unidad?: string; // lts, unidades, etc.
+  // Para vincular con un producto existente (ej: lubricentro)
+  productoId?: string;
 }
 
 export const TIPOS_ANOTACION = [

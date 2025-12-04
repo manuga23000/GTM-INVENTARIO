@@ -1,5 +1,5 @@
 import { db } from "@/lib/firebase";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 
 export async function getInventoryCounts() {
   try {
@@ -8,13 +8,8 @@ export async function getInventoryCounts() {
     const lubricentroSnapshot = await getDocs(lubricentroRef);
     const totalLubricentroProducts = lubricentroSnapshot.size;
 
-    // Productos con stock bajo en Lubricentro
-    const lowStockLubricentroQuery = query(
-      lubricentroRef,
-      where("stock", "<", "stockMinimo")
-    );
-    const lowStockLubricentroSnapshot = await getDocs(lowStockLubricentroQuery);
-    const lowStockLubricentro = lowStockLubricentroSnapshot.size;
+    // Sin umbral de stock mínimo, por ahora no calculamos "stock bajo"
+    const lowStockLubricentro = 0;
 
     // Taller inventario
     const tallerRef = collection(db, "inventario_taller");

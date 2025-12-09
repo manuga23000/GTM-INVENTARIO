@@ -154,6 +154,16 @@ export default function ProductoLubricentroForm({
     }));
   };
 
+  // Al terminar de editar el precio de costo, completar precio de venta con +50%
+  const handleCostoBlur = () => {
+    setFormData((prev) => {
+      const costo = Number(prev.precioCosto);
+      if (!Number.isFinite(costo)) return prev;
+      const venta = Number((costo * 1.5).toFixed(2));
+      return { ...prev, precioVenta: venta };
+    });
+  };
+
   if (!mounted) return null;
 
   return createPortal(
@@ -301,6 +311,7 @@ export default function ProductoLubricentroForm({
                 name="precioCosto"
                 value={formData.precioCosto}
                 onChange={handleChange}
+                onBlur={handleCostoBlur}
                 min="0"
                 step="0.01"
                 className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"

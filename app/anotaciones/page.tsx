@@ -167,7 +167,7 @@ export default function AnotacionesPage() {
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div className="flex items-center space-x-3">
               <div className="bg-red-600 p-2 rounded-lg">
                 <FileText className="w-6 h-6 text-white" />
@@ -181,7 +181,7 @@ export default function AnotacionesPage() {
             </div>
             <button
               onClick={handleNuevo}
-              className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
             >
               <Plus className="w-5 h-5" />
               Nueva anotación
@@ -277,7 +277,63 @@ export default function AnotacionesPage() {
           </div>
         ) : (
           <>
-            <div className="bg-neutral-900 rounded-lg overflow-hidden border border-neutral-800">
+            {/* Lista móvil */}
+            <div className="md:hidden space-y-3">
+              {currentAnotaciones.map((anotacion) => (
+                <div
+                  key={anotacion.id}
+                  className="bg-neutral-900 border border-neutral-800 rounded-lg p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-sm text-gray-300">
+                        <Calendar className="w-4 h-4 text-gray-500" />
+                        {formatearFecha(anotacion.fecha)}
+                      </div>
+                      <div className="mt-1">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-600/20 text-red-400 border border-red-600/30">
+                          {formatearTipo(anotacion.tipo)}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-white font-medium truncate">
+                        {anotacion.titulo}
+                      </div>
+                      <div className="text-sm text-gray-400 line-clamp-2">
+                        {anotacion.descripcion || "-"}
+                      </div>
+                      <div className="mt-1 text-sm text-gray-400">
+                        {anotacion.items.length} item
+                        {anotacion.items.length !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-semibold text-red-500">
+                        ${(anotacion.total || 0).toFixed(2)}
+                      </div>
+                      <div className="mt-2 flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleEditar(anotacion)}
+                          className="p-2 hover:bg-neutral-700 rounded-lg transition-colors"
+                          title="Editar"
+                        >
+                          <Edit2 className="w-4 h-4 text-blue-400" />
+                        </button>
+                        <button
+                          onClick={() => handleEliminar(anotacion.id!, anotacion.titulo)}
+                          className="p-2 hover:bg-neutral-700 rounded-lg transition-colors"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-400" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Tabla escritorio */}
+            <div className="hidden md:block bg-neutral-900 rounded-lg overflow-hidden border border-neutral-800">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-neutral-800 border-b border-neutral-700">
@@ -372,7 +428,7 @@ export default function AnotacionesPage() {
 
             {/* Paginación */}
             {totalPages > 1 && (
-              <div className="mt-6 flex items-center justify-between">
+              <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <p className="text-sm text-gray-400">
                   Mostrando{" "}
                   <span className="font-medium text-white">

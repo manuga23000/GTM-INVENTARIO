@@ -171,7 +171,7 @@ export default function InventarioTallerPage() {
             {/* Botón agregar */}
             <button
               onClick={handleNuevo}
-              className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center space-x-2 whitespace-nowrap"
+              className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2 whitespace-nowrap"
             >
               <Plus className="w-4 h-4" />
               <span>Nuevo Item</span>
@@ -181,7 +181,7 @@ export default function InventarioTallerPage() {
           {/* Filtros por Tipo */}
           <div className="mb-3">
             <p className="text-xs font-semibold text-gray-400 mb-2">TIPO:</p>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex items-center gap-2 overflow-x-auto pb-2">
               <button
                 onClick={() => setSelectedTipo("Todos")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -214,7 +214,7 @@ export default function InventarioTallerPage() {
               <p className="text-xs font-semibold text-gray-400 mb-2">
                 UBICACIÓN:
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex items-center gap-2 overflow-x-auto pb-2">
                 {ubicaciones.map((ubicacion) => (
                   <button
                     key={ubicacion}
@@ -257,7 +257,53 @@ export default function InventarioTallerPage() {
           </div>
         ) : (
           <>
-            <div className="bg-neutral-900 rounded-lg overflow-hidden border border-neutral-800">
+            {/* Lista móvil */}
+            <div className="md:hidden space-y-3">
+              {currentItems.map((item) => (
+                <div key={item.id} className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-white font-medium truncate">{item.nombre}</div>
+                      <div className="mt-1 flex items-center gap-2">
+                        {item.tipo ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-neutral-700 text-gray-300">{item.tipo}</span>
+                        ) : (
+                          <span className="text-xs text-gray-500">-</span>
+                        )}
+                        <span className="text-sm text-gray-400">{item.marca || "-"}</span>
+                      </div>
+                      <div className="mt-1 text-sm text-gray-300">
+                        Ubicación: {item.ubicacion ? (
+                          <span className="text-blue-400 font-medium">{item.ubicacion}</span>
+                        ) : (
+                          <span className="text-gray-500">-</span>
+                        )}
+                      </div>
+                      <div className="mt-1 text-sm text-gray-300">Cantidad: <span className="text-white font-semibold">{item.cantidad || 0}</span></div>
+                    </div>
+                    <div className="shrink-0 flex items-center gap-2">
+                      <button
+                        onClick={() => handleEditar(item)}
+                        className="p-2 hover:bg-neutral-800 rounded-lg"
+                        title="Editar"
+                      >
+                        <Edit2 className="w-4 h-4 text-blue-400" />
+                      </button>
+                      <button
+                        onClick={() => handleEliminar(item.id!, item.nombre)}
+                        className="p-2 hover:bg-neutral-800 rounded-lg"
+                        title="Eliminar"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-400" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Tabla escritorio */}
+            <div className="hidden md:block bg-neutral-900 rounded-lg overflow-hidden border border-neutral-800">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-neutral-800">
@@ -349,7 +395,7 @@ export default function InventarioTallerPage() {
             </div>
 
             {/* Paginación */}
-            <div className="mt-6 flex items-center justify-between">
+            <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
               <p className="text-sm text-gray-400">
                 Mostrando{" "}
                 <span className="font-medium text-white">

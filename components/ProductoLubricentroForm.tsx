@@ -178,7 +178,7 @@ export default function ProductoLubricentroForm({
     >
       <div
         ref={modalRef}
-        className="bg-neutral-900 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-scale-in"
+        className="bg-neutral-900 rounded-lg max-w-2xl w-full my-8 max-h-[90vh] overflow-y-auto animate-scale-in"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-neutral-800">
@@ -334,20 +334,20 @@ export default function ProductoLubricentroForm({
           
 
           {/* Botones */}
-          <div className="flex gap-4 pt-4">
+          <div className="flex flex-col sm:flex-row gap-3 pt-4">
             <button
               type="button"
               onClick={confirmClose}
-              className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white font-semibold 
-              py-2 px-4 rounded-lg transition-colors transform hover:scale-105"
+              className="w-full sm:w-auto bg-neutral-800 hover:bg-neutral-700 text-white font-semibold 
+              py-3 px-4 rounded-lg transition-colors transform hover:scale-105 min-h-[44px]"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold 
-              py-2 px-4 rounded-lg transition-colors disabled:opacity-50 transform hover:scale-105"
+              className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-semibold 
+              py-3 px-4 rounded-lg transition-colors disabled:opacity-50 transform hover:scale-105 min-h-[44px]"
             >
               {loading ? "Guardando..." : producto ? "Actualizar" : "Crear"}
             </button>

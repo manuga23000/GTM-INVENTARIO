@@ -172,10 +172,10 @@ export default function LubricentroInventario() {
             </div>
 
             {/* Botones de Acción */}
-            <div className="flex space-x-2">
+            <div className="flex w-full sm:w-auto space-x-2">
               <button
                 onClick={handleNuevoProducto}
-                className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition flex items-center space-x-2 whitespace-nowrap transform hover:scale-105"
+                className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition flex items-center justify-center space-x-2 whitespace-nowrap transform hover:scale-105"
               >
                 <Plus className="w-4 h-4" />
                 <span className="text-sm sm:text-base">Nuevo Producto</span>
@@ -288,8 +288,65 @@ export default function LubricentroInventario() {
                 </button>
               </div>
             ) : (
-              <div className="overflow-x-auto animate-fade-in">
-                <table className="w-full">
+              <>
+                {/* Lista móvil */}
+                <div className="md:hidden divide-y divide-neutral-800">
+                  {filteredProductos.map((producto) => (
+                    <div key={producto.id} className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs text-gray-400 font-mono">{producto.codigo || "-"}</div>
+                          <div className="text-white font-medium mt-0.5 truncate">{producto.descripcion || "-"}</div>
+                          <div className="text-sm text-gray-300 mt-0.5">{producto.marca || "-"}</div>
+                          <div className="mt-1">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              producto.categoria === "Aceites"
+                                ? "bg-blue-500/20 text-blue-400"
+                                : producto.categoria === "Aditivos"
+                                ? "bg-green-500/20 text-green-400"
+                                : producto.categoria === "Refrigerantes"
+                                ? "bg-purple-500/20 text-purple-400"
+                                : "bg-neutral-700 text-neutral-300"
+                            }`}>
+                              {producto.categoria || "-"}
+                            </span>
+                          </div>
+                          <div className="mt-2 text-sm text-gray-300 flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span>
+                              Stock: <span className="text-white font-semibold">{producto.stock || 0}</span>
+                            </span>
+                            <span className="whitespace-nowrap">
+                              Costo: {producto.precioCosto ? new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(producto.precioCosto) : "-"}
+                            </span>
+                            <span className="whitespace-nowrap">
+                              Venta: {producto.precioVenta ? new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(producto.precioVenta) : "-"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="shrink-0 flex items-center gap-2">
+                          <button
+                            onClick={() => handleEditarProducto(producto)}
+                            className="p-2 hover:bg-neutral-800 rounded-lg text-blue-400"
+                            title="Editar"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleEliminarProducto(producto.id!, producto.descripcion || "Producto")}
+                            className="p-2 hover:bg-neutral-800 rounded-lg text-red-400"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Tabla escritorio */}
+                <div className="hidden md:block overflow-x-auto animate-fade-in">
+                  <table className="w-full">
                   <thead className="bg-neutral-800 border-b border-neutral-700">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
@@ -399,7 +456,8 @@ export default function LubricentroInventario() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+                </div>
+              </>
             )}
           </div>
         )}

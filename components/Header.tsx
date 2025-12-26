@@ -1,12 +1,13 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react"; // Añadido para menú móvil
+import { useState } from "react";
 import {
   Wrench,
   Package,
   FileText,
   Menu,
-  X, // Añadidos para menú móvil
+  X,
+  BarChart3, // Icono para reportes
 } from "lucide-react";
 
 export default function Header() {
@@ -21,7 +22,7 @@ export default function Header() {
             href="/"
             className="flex items-center space-x-3 transform hover:scale-105 transition-transform"
           >
-            <div className="bg-gtm-orange p-2 rounded-lg">
+            <div className="bg-red-600 p-2 rounded-lg">
               <Wrench className="w-6 h-6 text-white" />
             </div>
             <div>
@@ -34,7 +35,7 @@ export default function Header() {
           <nav className="hidden md:flex items-center space-x-6">
             <Link
               href="/lubricentro"
-              className="flex items-center space-x-2 text-gray-300 hover:text-gtm-orange transition-colors transform hover:scale-105"
+              className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors transform hover:scale-105"
             >
               <Package className="w-5 h-5" />
               <span>Lubricentro</span>
@@ -42,7 +43,7 @@ export default function Header() {
 
             <Link
               href="/inventario-taller"
-              className="flex items-center space-x-2 text-gray-300 hover:text-gtm-orange transition-colors transform hover:scale-105"
+              className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors transform hover:scale-105"
             >
               <Wrench className="w-5 h-5" />
               <span>Inventario Taller</span>
@@ -50,10 +51,18 @@ export default function Header() {
 
             <Link
               href="/anotaciones"
-              className="flex items-center space-x-2 text-gray-300 hover:text-gtm-orange transition-colors transform hover:scale-105"
+              className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors transform hover:scale-105"
             >
               <FileText className="w-5 h-5" />
               <span>Anotaciones</span>
+            </Link>
+
+            <Link
+              href="/reportes"
+              className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors transform hover:scale-105"
+            >
+              <BarChart3 className="w-5 h-5" />
+              <span>Reportes</span>
             </Link>
           </nav>
 
@@ -61,7 +70,7 @@ export default function Header() {
           <div className="md:hidden">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="text-white hover:text-gtm-orange transition-colors"
+              className="text-white hover:text-red-600 transition-colors"
             >
               {mobileMenuOpen ? (
                 <X className="w-6 h-6" />
@@ -77,7 +86,7 @@ export default function Header() {
               <p className="text-sm font-semibold text-white">Admin</p>
               <p className="text-xs text-gray-400">GTM</p>
             </div>
-            <div className="w-10 h-10 rounded-full bg-gtm-orange flex items-center justify-center font-bold transform hover:scale-110 transition-transform">
+            <div className="w-10 h-10 rounded-full bg-red-600 flex items-center justify-center font-bold transform hover:scale-110 transition-transform">
               A
             </div>
           </div>
@@ -90,7 +99,7 @@ export default function Header() {
               <Link
                 href="/lubricentro"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center space-x-2 text-gray-300 hover:text-gtm-orange transition-colors"
+                className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors"
               >
                 <Package className="w-5 h-5" />
                 <span>Lubricentro</span>
@@ -98,7 +107,7 @@ export default function Header() {
               <Link
                 href="/inventario-taller"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center space-x-2 text-gray-300 hover:text-gtm-orange transition-colors"
+                className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors"
               >
                 <Wrench className="w-5 h-5" />
                 <span>Inventario Taller</span>
@@ -106,10 +115,18 @@ export default function Header() {
               <Link
                 href="/anotaciones"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center space-x-2 text-gray-300 hover:text-gtm-orange transition-colors"
+                className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors"
               >
                 <FileText className="w-5 h-5" />
                 <span>Anotaciones</span>
+              </Link>
+              <Link
+                href="/reportes"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors"
+              >
+                <BarChart3 className="w-5 h-5" />
+                <span>Reportes</span>
               </Link>
             </nav>
           </div>

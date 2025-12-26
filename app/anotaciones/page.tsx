@@ -156,6 +156,13 @@ export default function AnotacionesPage() {
     return tipo.replace(/_/g, " ");
   };
 
+  // Truncar descripción larga con puntos suspensivos
+  const truncarDescripcion = (texto?: string, max: number = 120) => {
+    if (!texto) return "-";
+    if (texto.length <= max) return texto;
+    return texto.slice(0, max).trimEnd() + "…";
+  };
+
   // Calcular total de todas las anotaciones filtradas
   const totalGeneral = filteredAnotaciones.reduce(
     (sum, anotacion) => sum + (anotacion.total || 0),
@@ -298,8 +305,11 @@ export default function AnotacionesPage() {
                       <div className="mt-2 text-white font-medium truncate">
                         {anotacion.titulo}
                       </div>
-                      <div className="text-sm text-gray-400 line-clamp-2">
-                        {anotacion.descripcion || "-"}
+                      <div
+                        className="text-sm text-gray-400 line-clamp-2"
+                        title={anotacion.descripcion || "-"}
+                      >
+                        {truncarDescripcion(anotacion.descripcion, 160)}
                       </div>
                       <div className="mt-1 text-sm text-gray-400">
                         {anotacion.items.length} item
@@ -384,8 +394,11 @@ export default function AnotacionesPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <div className="text-sm text-gray-400 max-w-xs truncate">
-                            {anotacion.descripcion || "-"}
+                          <div
+                            className="text-sm text-gray-400 max-w-xs truncate"
+                            title={anotacion.descripcion || "-"}
+                          >
+                            {truncarDescripcion(anotacion.descripcion, 120)}
                           </div>
                         </td>
                         <td className="px-6 py-4">

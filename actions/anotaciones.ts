@@ -285,3 +285,49 @@ export async function cancelarAnotacion(id: string) {
     return { success: false, error: message };
   }
 }
+
+export async function obtenerAnotacionesPorRango(
+  fechaInicio: string,
+  fechaFin: string
+) {
+  try {
+    const col = collection(db, "anotaciones");
+    const q = query(col, orderBy("fecha", "asc"));
+
+    const snapshot = await getDocs(q);
+
+    const anotaciones: Anotacion[] = snapshot.docs
+      .map((docSnap) => {
+        const d = docSnap.data() as any;
+        return {
+          id: docSnap.id,
+          fecha:
+            d?.fecha instanceof Timestamp ? d.fecha.toDate().toISOString() : "",
+          tipo: d?.tipo,
+          titulo: d?.titulo,
+          descripcion: d?.descripcion || "",
+          items: Array.isArray(d?.items) ? d.items : [],
+          total: typeof d?.total === "number" ? d.total : 0,
+          createdAt:
+            d?.createdAt instanceof Timestamp
+              ? d.createdAt.toDate()
+              : undefined,
+          updatedAt:
+            d?.updatedAt instanceof Timestamp
+              ? d.updatedAt.toDate()
+              : undefined,
+        };
+      })
+      .filter((a) => {
+        const fechaAnot = new Date(a.fecha);
+        const fechaInicioDate = new Date(fechaInicio);
+        const fechaFinDate = new Date(fechaFin + "T23:59:59");
+        return fechaAnot >= fechaInicioDate && fechaAnot <= fechaFinDate;
+      });
+
+    return { success: true, data: anotaciones };
+  } catch (error) {
+    console.error("Error al obtener anotaciones por rango:", error);
+    return { success: false, error: "Error al obtener anotaciones" };
+  }
+}

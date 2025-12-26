@@ -1,6 +1,13 @@
 import { getInventoryCounts } from "@/actions/getInventoryCounts";
 import Link from "next/link";
-import { Package, Wrench, AlertCircle, TrendingUp, FileText } from "lucide-react";
+import {
+  Package,
+  Wrench,
+  AlertCircle,
+  TrendingUp,
+  FileText,
+  BarChart3,
+} from "lucide-react";
 
 export default async function Home() {
   const {
@@ -82,7 +89,7 @@ export default async function Home() {
       </div>
 
       {/* Accesos rápidos */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Link
           href="/lubricentro"
           className="bg-neutral-900 border border-red-600/30 rounded-lg p-6 hover:border-red-600 transition-all group flex items-center space-x-6"
@@ -124,7 +131,21 @@ export default async function Home() {
           </div>
           <div>
             <h2 className="text-xl font-bold text-white mb-1">Anotaciones</h2>
-            <p className="text-gray-400">Crear y ver anotaciones</p>
+            <p className="text-gray-400">Registrar ventas y movimientos</p>
+          </div>
+        </Link>
+
+        {/* ⭐ NUEVA TARJETA DE REPORTES */}
+        <Link
+          href="/reportes"
+          className="bg-neutral-900 border border-red-600/30 rounded-lg p-6 hover:border-red-600 transition-all group flex items-center space-x-6"
+        >
+          <div className="bg-red-600 p-4 rounded-lg group-hover:scale-110 transition-transform">
+            <BarChart3 className="w-8 h-8 text-white" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-white mb-1">Reportes</h2>
+            <p className="text-gray-400">Reportes semanales en PDF</p>
           </div>
         </Link>
       </div>

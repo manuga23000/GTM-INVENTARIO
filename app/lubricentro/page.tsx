@@ -4,6 +4,7 @@ import { Trash2, Edit, Plus, Search, Filter, Package } from "lucide-react";
 import { ProductoLubricentro } from "@/types/lubricentro";
 import ProductoLubricentroForm from "@/components/ProductoLubricentroForm";
 import SkeletonLoader from "@/components/SkeletonLoaders";
+import BotonReporteFiltros from "@/components/BotonReporteFiltros";
 import {
   obtenerProductosLubricentro,
   eliminarProductoLubricentro,
@@ -16,9 +17,7 @@ export default function LubricentroInventario() {
   >([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("Todos");
-  const [selectedFilterType, setSelectedFilterType] = useState(
-    "Todos"
-  );
+  const [selectedFilterType, setSelectedFilterType] = useState("Todos");
   const [showForm, setShowForm] = useState(false);
   const [editingProducto, setEditingProducto] = useState<
     ProductoLubricentro | undefined
@@ -59,13 +58,16 @@ export default function LubricentroInventario() {
             )
           : false;
         // Si es categoría Filtros, considerar descripcion como lista separada por comas
-        const matchAplicacionesEnDescripcion = (p.categoria === "Filtros")
-          ? (p.descripcion || "")
-              .split(",")
-              .map((s) => s.trim().toLowerCase())
-              .some((token) => token.includes(q))
-          : false;
-        return matchBasico || matchAplicaciones || matchAplicacionesEnDescripcion;
+        const matchAplicacionesEnDescripcion =
+          p.categoria === "Filtros"
+            ? (p.descripcion || "")
+                .split(",")
+                .map((s) => s.trim().toLowerCase())
+                .some((token) => token.includes(q))
+            : false;
+        return (
+          matchBasico || matchAplicaciones || matchAplicacionesEnDescripcion
+        );
       });
     }
 
@@ -95,7 +97,8 @@ export default function LubricentroInventario() {
         const t = (p?.tipoFiltro || "").toString().toLowerCase();
         if (t) {
           // comparar normalizando acentos sencillamente
-          const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "");
+          const norm = (s: string) =>
+            s.normalize("NFD").replace(/\p{Diacritic}/gu, "");
           return norm(t) === norm(type);
         }
         const keywords = mapKeywords[type] || mapKeywords["aire"]; // fallback por si acaso
@@ -172,7 +175,11 @@ export default function LubricentroInventario() {
             </div>
 
             {/* Botones de Acción */}
-            <div className="flex w-full sm:w-auto space-x-2">
+            <div className="flex w-full sm:w-auto gap-2">
+              {/* Botón Reporte de Filtros */}
+              <BotonReporteFiltros />
+
+              {/* Botón Nuevo Producto */}
               <button
                 onClick={handleNuevoProducto}
                 className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition flex items-center justify-center space-x-2 whitespace-nowrap transform hover:scale-105"
@@ -295,31 +302,56 @@ export default function LubricentroInventario() {
                     <div key={producto.id} className="p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="text-xs text-gray-400 font-mono">{producto.codigo || "-"}</div>
-                          <div className="text-white font-medium mt-0.5 truncate">{producto.descripcion || "-"}</div>
-                          <div className="text-sm text-gray-300 mt-0.5">{producto.marca || "-"}</div>
+                          <div className="text-xs text-gray-400 font-mono">
+                            {producto.codigo || "-"}
+                          </div>
+                          <div className="text-white font-medium mt-0.5 truncate">
+                            {producto.descripcion || "-"}
+                          </div>
+                          <div className="text-sm text-gray-300 mt-0.5">
+                            {producto.marca || "-"}
+                          </div>
                           <div className="mt-1">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              producto.categoria === "Aceites"
-                                ? "bg-blue-500/20 text-blue-400"
-                                : producto.categoria === "Aditivos"
-                                ? "bg-green-500/20 text-green-400"
-                                : producto.categoria === "Refrigerantes"
-                                ? "bg-purple-500/20 text-purple-400"
-                                : "bg-neutral-700 text-neutral-300"
-                            }`}>
+                            <span
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                producto.categoria === "Aceites"
+                                  ? "bg-blue-500/20 text-blue-400"
+                                  : producto.categoria === "Aditivos"
+                                  ? "bg-green-500/20 text-green-400"
+                                  : producto.categoria === "Refrigerantes"
+                                  ? "bg-purple-500/20 text-purple-400"
+                                  : "bg-neutral-700 text-neutral-300"
+                              }`}
+                            >
                               {producto.categoria || "-"}
                             </span>
                           </div>
                           <div className="mt-2 text-sm text-gray-300 flex flex-wrap items-center gap-x-3 gap-y-1">
                             <span>
-                              Stock: <span className="text-white font-semibold">{producto.stock || 0}</span>
+                              Stock:{" "}
+                              <span className="text-white font-semibold">
+                                {producto.stock || 0}
+                              </span>
                             </span>
                             <span className="whitespace-nowrap">
-                              Costo: {producto.precioCosto ? new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(producto.precioCosto) : "-"}
+                              Costo:{" "}
+                              {producto.precioCosto
+                                ? new Intl.NumberFormat("es-AR", {
+                                    style: "currency",
+                                    currency: "ARS",
+                                    minimumFractionDigits: 0,
+                                  }).format(producto.precioCosto)
+                                : "-"}
                             </span>
                             <span className="whitespace-nowrap">
-                              Venta: {producto.precioVenta ? new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(producto.precioVenta) : "-"}
+                              Venta:{" "}
+                              {producto.precioVenta
+                                ? new Intl.NumberFormat("es-AR", {
+                                    style: "currency",
+                                    currency: "ARS",
+                                    minimumFractionDigits: 0,
+                                  }).format(producto.precioVenta)
+                                : "-"}
                             </span>
                           </div>
                         </div>
@@ -332,7 +364,12 @@ export default function LubricentroInventario() {
                             <Edit className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleEliminarProducto(producto.id!, producto.descripcion || "Producto")}
+                            onClick={() =>
+                              handleEliminarProducto(
+                                producto.id!,
+                                producto.descripcion || "Producto"
+                              )
+                            }
                             className="p-2 hover:bg-neutral-800 rounded-lg text-red-400"
                             title="Eliminar"
                           >
@@ -347,54 +384,54 @@ export default function LubricentroInventario() {
                 {/* Tabla escritorio */}
                 <div className="hidden md:block overflow-x-auto animate-fade-in">
                   <table className="w-full">
-                  <thead className="bg-neutral-800 border-b border-neutral-700">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                        Código
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                        Descripción
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                        Marca
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                        Categoría
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                        Stock
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                        P. Costo
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                        P. Venta
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                        Acciones
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-800">
-                    {filteredProductos.map((producto) => (
-                      <tr
-                        key={producto.id}
-                        className="hover:bg-neutral-800/50 transition-colors"
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-300">
-                          {producto.codigo || "-"}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-white font-medium">
-                            {producto.descripcion || "-"}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                          {producto.marca || "-"}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`
+                    <thead className="bg-neutral-800 border-b border-neutral-700">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          Código
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          Descripción
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          Marca
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          Categoría
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          Stock
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          P. Costo
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          P. Venta
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                          Acciones
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-800">
+                      {filteredProductos.map((producto) => (
+                        <tr
+                          key={producto.id}
+                          className="hover:bg-neutral-800/50 transition-colors"
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-300">
+                            {producto.codigo || "-"}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm text-white font-medium">
+                              {producto.descripcion || "-"}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                            {producto.marca || "-"}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span
+                              className={`
                   inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
                   ${
                     producto.categoria === "Aceites"
@@ -406,56 +443,58 @@ export default function LubricentroInventario() {
                       : "bg-neutral-700 text-neutral-300"
                   }
                 `}
-                          >
-                            {producto.categoria || "-"}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                          <span className="font-semibold">{producto.stock || 0}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                          {producto.precioCosto
-                            ? new Intl.NumberFormat("es-AR", {
-                                style: "currency",
-                                currency: "ARS",
-                                minimumFractionDigits: 0,
-                              }).format(producto.precioCosto)
-                            : "-"}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                          {producto.precioVenta
-                            ? new Intl.NumberFormat("es-AR", {
-                                style: "currency",
-                                currency: "ARS",
-                                minimumFractionDigits: 0,
-                              }).format(producto.precioVenta)
-                            : "-"}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => handleEditarProducto(producto)}
-                              className="text-red-500 hover:text-red-700 transition-colors"
                             >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() =>
-                                handleEliminarProducto(
-                                  producto.id!,
-                                  producto.descripcion || "Producto"
-                                )
-                              }
-                              className="text-red-500 hover:text-red-700 transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                              {producto.categoria || "-"}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
+                            <span className="font-semibold">
+                              {producto.stock || 0}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
+                            {producto.precioCosto
+                              ? new Intl.NumberFormat("es-AR", {
+                                  style: "currency",
+                                  currency: "ARS",
+                                  minimumFractionDigits: 0,
+                                }).format(producto.precioCosto)
+                              : "-"}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
+                            {producto.precioVenta
+                              ? new Intl.NumberFormat("es-AR", {
+                                  style: "currency",
+                                  currency: "ARS",
+                                  minimumFractionDigits: 0,
+                                }).format(producto.precioVenta)
+                              : "-"}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => handleEditarProducto(producto)}
+                                className="text-red-500 hover:text-red-700 transition-colors"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleEliminarProducto(
+                                    producto.id!,
+                                    producto.descripcion || "Producto"
+                                  )
+                                }
+                                className="text-red-500 hover:text-red-700 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </>
             )}

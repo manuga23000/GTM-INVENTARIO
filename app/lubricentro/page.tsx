@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { Trash2, Edit, Plus, Search, Filter, Package } from "lucide-react";
+import { Trash2, Edit, Plus, Search, Filter, Package, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { ProductoLubricentro } from "@/types/lubricentro";
 import ProductoLubricentroForm from "@/components/ProductoLubricentroForm";
 import SkeletonLoader from "@/components/SkeletonLoaders";
@@ -27,6 +27,8 @@ export default function LubricentroInventario() {
     ProductoLubricentro | undefined
   >(undefined);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
 
   const cargarProductos = async () => {
     setLoading(true);
@@ -107,7 +109,17 @@ export default function LubricentroInventario() {
     }
 
     setFilteredProductos(filtered);
+    setCurrentPage(1); // Reset a la primera página cuando cambian los filtros
   }, [searchTerm, selectedCategory, selectedFilterType, productos]);
+
+  // Calcular productos paginados
+  const totalPages = Math.ceil(filteredProductos.length / itemsPerPage);
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentProductos = filteredProductos.slice(
+    indexOfFirstItem,
+    indexOfLastItem
+  );
 
   const handleNuevoProducto = () => {
     // Si hay un último producto, usamos sus datos como base pero SIN id para que sea un nuevo registro
@@ -298,7 +310,7 @@ export default function LubricentroInventario() {
               <>
                 {/* Lista móvil */}
                 <div className="md:hidden divide-y divide-neutral-800">
-                  {filteredProductos.map((producto) => (
+                  {currentProductos.map((producto) => (
                     <div key={producto.id} className="p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -413,7 +425,7 @@ export default function LubricentroInventario() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-neutral-800">
-                      {filteredProductos.map((producto) => (
+                      {currentProductos.map((producto) => (
                         <tr
                           key={producto.id}
                           className="hover:bg-neutral-800/50 transition-colors"
@@ -496,6 +508,62 @@ export default function LubricentroInventario() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Controles de paginación */}
+                {totalPages > 1 && (
+                  <div className="bg-neutral-800 px-4 py-3 border-t border-neutral-700">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                      {/* Información de página */}
+                      <div className="text-sm text-gray-400">
+                        Mostrando {indexOfFirstItem + 1} a{" "}
+                        {Math.min(indexOfLastItem, filteredProductos.length)} de{" "}
+                        {filteredProductos.length} productos
+                      </div>
+
+                      {/* Botones de navegación */}
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setCurrentPage(1)}
+                          disabled={currentPage === 1}
+                          className="p-2 rounded-lg bg-neutral-700 text-white hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          title="Primera página"
+                        >
+                          <ChevronsLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                          disabled={currentPage === 1}
+                          className="p-2 rounded-lg bg-neutral-700 text-white hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          title="Página anterior"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+
+                        {/* Indicador de página */}
+                        <div className="px-4 py-2 bg-neutral-700 rounded-lg text-white text-sm font-medium">
+                          {currentPage} / {totalPages}
+                        </div>
+
+                        <button
+                          onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                          disabled={currentPage === totalPages}
+                          className="p-2 rounded-lg bg-neutral-700 text-white hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          title="Página siguiente"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setCurrentPage(totalPages)}
+                          disabled={currentPage === totalPages}
+                          className="p-2 rounded-lg bg-neutral-700 text-white hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          title="Última página"
+                        >
+                          <ChevronsRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>

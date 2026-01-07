@@ -33,22 +33,23 @@ export async function generarReporteSemanal(
 
   // Título
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(20);
+  doc.setFontSize(24);
   doc.setFont("helvetica", "bold");
   doc.text("GTM GRANDOLI TALLER MECÁNICO", pageWidth / 2, 15, {
     align: "center",
   });
 
-  doc.setFontSize(14);
+  doc.setFontSize(18);
   doc.text("REPORTE SEMANAL DE VENTAS", pageWidth / 2, 25, { align: "center" });
 
   // Período
   yPos = 45;
   doc.setTextColor(0, 0, 0);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "normal");
-  const fechaInicioFormat = new Date(fechaInicio).toLocaleDateString("es-AR");
-  const fechaFinFormat = new Date(fechaFin).toLocaleDateString("es-AR");
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  // Parsear fechas correctamente sin conversión UTC
+  const fechaInicioFormat = new Date(fechaInicio + 'T12:00:00').toLocaleDateString("es-AR");
+  const fechaFinFormat = new Date(fechaFin + 'T12:00:00').toLocaleDateString("es-AR");
   doc.text(
     `Período: ${fechaInicioFormat} al ${fechaFinFormat}`,
     marginLeft,
@@ -61,23 +62,30 @@ export async function generarReporteSemanal(
   const items: ReporteItem[] = [];
 
   for (const anotacion of anotaciones) {
-    const fecha = new Date(anotacion.fecha).toLocaleDateString("es-AR");
+    // Parsear fecha correctamente sin conversión UTC
+    const fecha = new Date(anotacion.fecha + 'T12:00:00').toLocaleDateString("es-AR");
 
     for (const item of anotacion.items) {
       let precioCosto = 0;
       let precioVenta = 0;
 
-      // Si es LUBRICENTRO y tiene productoId, buscar precios
-      if (anotacion.tipo === "LUBRICENTRO" && item.productoId) {
+      // Si el item tiene precioCosto especificado manualmente, usarlo
+      if ((item as any).precioCosto !== undefined) {
+        precioCosto = (item as any).precioCosto;
+        precioVenta = item.precio || 0;
+      }
+      // Si es LUBRICENTRO y tiene productoId, buscar precios del producto
+      else if (anotacion.tipo === "LUBRICENTRO" && item.productoId) {
         const producto = productos.find((p) => p.id === item.productoId);
         if (producto) {
           precioCosto = producto.precioCosto || 0;
           precioVenta = producto.precioVenta || 0;
         }
-      } else {
-        // Para otros tipos, usar el precio del item si existe
+      }
+      // Para entrada manual sin precioCosto especificado, usar el precio del item
+      else {
         precioVenta = item.precio || 0;
-        // Asumir 50% de margen para calcular costo aproximado
+        // Asumir 50% de margen para calcular costo aproximado si no se especificó
         precioCosto = precioVenta / 1.5;
       }
 
@@ -114,10 +122,6 @@ export async function generarReporteSemanal(
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`,
-    `$${item.subtotal.toLocaleString("es-AR", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`,
   ]);
 
   autoTable(doc, {
@@ -130,7 +134,6 @@ export async function generarReporteSemanal(
         "P. Costo",
         "P. Venta",
         "Ganancia",
-        "Total",
       ],
     ],
     body: tableData,
@@ -139,20 +142,19 @@ export async function generarReporteSemanal(
       fillColor: [220, 38, 38], // GTM Red
       textColor: [255, 255, 255],
       fontStyle: "bold",
-      fontSize: 9,
+      fontSize: 13,
     },
     styles: {
-      fontSize: 8,
-      cellPadding: 3,
+      fontSize: 12,
+      cellPadding: 4,
     },
     columnStyles: {
-      0: { cellWidth: 20 }, // Fecha
-      1: { cellWidth: 60 }, // Descripción
+      0: { cellWidth: 26 }, // Fecha
+      1: { cellWidth: 51 }, // Descripción
       2: { cellWidth: 15, halign: "center" }, // Cantidad
-      3: { cellWidth: 25, halign: "right" }, // P. Costo
-      4: { cellWidth: 25, halign: "right" }, // P. Venta
-      5: { cellWidth: 25, halign: "right" }, // Ganancia
-      6: { cellWidth: 25, halign: "right" }, // Total
+      3: { cellWidth: 32, halign: "right" }, // P. Costo
+      4: { cellWidth: 32, halign: "right", fontStyle: "bold" }, // P. Venta en negrita
+      5: { cellWidth: 32, halign: "right" }, // Ganancia
     },
     alternateRowStyles: {
       fillColor: [245, 245, 245],
@@ -171,14 +173,15 @@ export async function generarReporteSemanal(
   const finalY = (doc as any).lastAutoTable.finalY + 10;
 
   // Resumen
-  doc.setFontSize(12);
+  doc.setFontSize(16);
   doc.setFont("helvetica", "bold");
   doc.text("RESUMEN", marginLeft, finalY);
 
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
 
-  const summaryY = finalY + 8;
+  const summaryY = finalY + 10;
+  doc.setTextColor(0, 0, 0);
   doc.text(
     `Total Ventas: $${totalVentas.toLocaleString("es-AR", {
       minimumFractionDigits: 2,
@@ -191,34 +194,37 @@ export async function generarReporteSemanal(
       minimumFractionDigits: 2,
     })}`,
     marginLeft,
-    summaryY + 6
+    summaryY + 8
   );
 
   doc.setFont("helvetica", "bold");
   doc.setTextColor(0, 128, 0); // Verde para ganancias
+  doc.setFontSize(14);
   doc.text(
     `Total Ganancias: $${totalGanancias.toLocaleString("es-AR", {
       minimumFractionDigits: 2,
     })}`,
     marginLeft,
-    summaryY + 12
+    summaryY + 16
   );
 
   // Margen promedio
   const margenPromedio =
     totalVentas > 0 ? (totalGanancias / totalVentas) * 100 : 0;
   doc.setTextColor(0, 0, 0);
-  doc.setFont("helvetica", "normal");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
   doc.text(
     `Margen Promedio: ${margenPromedio.toFixed(1)}%`,
     marginLeft,
-    summaryY + 18
+    summaryY + 24
   );
 
   // Footer
   const pageHeight = doc.internal.pageSize.getHeight();
-  doc.setFontSize(8);
+  doc.setFontSize(10);
   doc.setTextColor(128, 128, 128);
+  doc.setFont("helvetica", "normal");
   doc.text(
     `Generado el ${new Date().toLocaleDateString(
       "es-AR"

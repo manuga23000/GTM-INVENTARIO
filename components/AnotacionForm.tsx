@@ -25,7 +25,7 @@ export default function AnotacionForm({
     tipo: anotacion?.tipo || "LUBRICENTRO",
     titulo: anotacion?.titulo || "",
     descripcion: anotacion?.descripcion || "",
-    items: anotacion?.items || [{ descripcion: "", cantidad: 1 }],
+    items: anotacion?.items || [{ descripcion: "", cantidad: 1, precio: 0 }],
   });
   const [loading, setLoading] = useState(false);
   const [productos, setProductos] = useState<ProductoLubricentro[]>([]);
@@ -37,6 +37,10 @@ export default function AnotacionForm({
     setMounted(true);
     // Prevent body scroll while modal is open
     document.body.style.overflow = "hidden";
+
+    // No inicializar queryByIndex para items sin productoId
+    // El campo "Producto del inventario (opcional)" debe estar vacío
+    // hasta que el usuario busque y seleccione un producto
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -51,7 +55,7 @@ export default function AnotacionForm({
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = "";
     };
-  }, [onClose]);
+  }, [onClose, anotacion]);
 
   // Cargar productos de lubricentro para el autocomplete cuando el tipo sea LUBRICENTRO
   useEffect(() => {
@@ -66,15 +70,21 @@ export default function AnotacionForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.tipo]);
 
-  // Sincronizar el texto del buscador con el producto ya seleccionado (edición o al cargar)
+  // Sincronizar productos del inventario cuando se cargan
   useEffect(() => {
-    if (formData.tipo !== "LUBRICENTRO") return;
+    if (formData.tipo !== "LUBRICENTRO" || productos.length === 0) return;
     setQueryByIndex((prev) => {
       const next: Record<number, string> = { ...prev };
       formData.items.forEach((it, i) => {
-        if (!it.productoId) return;
-        const p = productos.find((pp) => pp.id === it.productoId);
-        if (p) next[i] = `${p.codigo} - ${p.descripcion} (${p.marca})`;
+        if (it.productoId) {
+          // Si tiene productoId, buscar en el inventario y mostrar formato completo
+          const p = productos.find((pp) => pp.id === it.productoId);
+          if (p) {
+            // Siempre actualizar con el formato del producto del inventario
+            next[i] = `${p.codigo} - ${p.descripcion} (${p.marca})`;
+          }
+        }
+        // Los items sin productoId mantienen su valor inicial (descripción manual)
       });
       return next;
     });
@@ -176,6 +186,7 @@ export default function AnotacionForm({
             descripcion: last.descripcion || "",
             cantidad: last.cantidad || 0,
             precio: last.precio || 0,
+            precioCosto: (last as any).precioCosto,
             unidad: last.unidad,
             productoId: last.productoId,
           }
@@ -196,20 +207,20 @@ export default function AnotacionForm({
 
   const actualizarItem = (
     index: number,
-    field: keyof ItemAnotacion,
+    field: keyof ItemAnotacion | "precioCosto",
     value: string | number
   ) => {
     setFormData((prev) => ({
       ...prev,
       items: prev.items.map((item, i) => {
         if (i !== index) return item;
-        if (field === "cantidad" || field === "precio") {
+        if (field === "cantidad" || field === "precio" || field === "precioCosto") {
           const raw = String(value);
           // Normalizamos formatos: eliminamos separadores de miles y usamos coma como decimal
           const normalized = raw.replace(/\./g, "").replace(",", ".");
           const parsed = normalized.trim() === "" ? NaN : Number(normalized);
           // Si no es número válido, mantenemos el valor anterior (no lo forzamos a 0)
-          const prevNum = (item[field] as number) ?? 0;
+          const prevNum = ((item as any)[field] as number) ?? 0;
           const finalNum = Number.isFinite(parsed) ? parsed : prevNum;
           return {
             ...item,
@@ -240,6 +251,10 @@ export default function AnotacionForm({
               // Si NO lo tiene, NO pisamos con 0: dejamos el precio que el usuario haya escrito.
               ...(typeof prod?.precioVenta === "number"
                 ? { precio: prod!.precioVenta }
+                : {}),
+              // Si el producto tiene precioCosto, lo usamos
+              ...(typeof prod?.precioCosto === "number"
+                ? { precioCosto: prod!.precioCosto }
                 : {}),
             }
           : item
@@ -373,11 +388,12 @@ export default function AnotacionForm({
                   className="bg-neutral-800 border border-neutral-700 rounded-lg p-4"
                 >
                   <div className="flex items-start gap-4">
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-3">
-                      {formData.tipo === "LUBRICENTRO" ? (
-                        <div className="md:col-span-2 relative">
+                    <div className="flex-1 space-y-3">
+                      {/* Selector de producto (solo para LUBRICENTRO y opcional) */}
+                      {formData.tipo === "LUBRICENTRO" && (
+                        <div className="relative">
                           <label className="block text-xs text-gray-400 mb-1">
-                            Producto (Lubricentro)
+                            Producto del inventario (opcional)
                           </label>
                           <input
                             type="text"
@@ -388,7 +404,7 @@ export default function AnotacionForm({
                               setOpenDropdownIndex(index);
                             }}
                             onFocus={() => setOpenDropdownIndex(index)}
-                            placeholder="Buscar por código, descripción o marca"
+                            placeholder="Buscar en inventario o dejar vacío para entrada manual"
                             className="w-full bg-neutral-900 border border-neutral-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
                           />
                           {openDropdownIndex === index && (
@@ -422,8 +438,16 @@ export default function AnotacionForm({
                               )}
                             </div>
                           )}
+                          {item.productoId && (
+                            <div className="mt-1 text-xs text-green-400">
+                              ✓ Producto seleccionado del inventario
+                            </div>
+                          )}
                         </div>
-                      ) : (
+                      )}
+
+                      {/* Campos editables siempre */}
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                         <div className="md:col-span-2">
                           <label className="block text-xs text-gray-400 mb-1">
                             Descripción *
@@ -439,55 +463,65 @@ export default function AnotacionForm({
                             placeholder="Ej: Aceite Castrol 5W30"
                           />
                         </div>
+
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">
+                            Cantidad *
+                          </label>
+                          <input
+                            type="number"
+                            value={item.cantidad ?? ""}
+                            onChange={(e) =>
+                              actualizarItem(index, "cantidad", e.target.value)
+                            }
+                            step="0.01"
+                            required
+                            className="w-full bg-neutral-900 border border-neutral-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
+                            placeholder="0"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">
+                            Precio Costo
+                          </label>
+                          <input
+                            type="number"
+                            value={(item as any).precioCosto ?? ""}
+                            onChange={(e) =>
+                              actualizarItem(index, "precioCosto", e.target.value)
+                            }
+                            step="0.01"
+                            className="w-full bg-neutral-900 border border-neutral-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
+                            placeholder="0.00"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">
+                            Precio Venta *
+                          </label>
+                          <input
+                            type="number"
+                            value={item.precio ?? ""}
+                            onChange={(e) =>
+                              actualizarItem(index, "precio", e.target.value)
+                            }
+                            step="0.01"
+                            required
+                            className="w-full bg-neutral-900 border border-neutral-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Mostrar ganancia calculada si hay precio de costo y venta */}
+                      {(item as any).precioCosto && item.precio && (
+                        <div className="text-xs text-gray-400">
+                          Ganancia unitaria: ${((item.precio || 0) - ((item as any).precioCosto || 0)).toFixed(2)} •
+                          Margen: {(((item.precio || 0) - ((item as any).precioCosto || 0)) / (item.precio || 1) * 100).toFixed(1)}%
+                        </div>
                       )}
-
-                      {/* Siempre mostramos descripción editable por si quiere sobreescribir */}
-                      <div className="md:col-span-2">
-                        <label className="block text-xs text-gray-400 mb-1">
-                          Descripción
-                        </label>
-                        <input
-                          type="text"
-                          value={item.descripcion}
-                          onChange={(e) =>
-                            actualizarItem(index, "descripcion", e.target.value)
-                          }
-                          className="w-full bg-neutral-900 border border-neutral-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
-                          placeholder="Detalle del item"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">
-                          Cantidad
-                        </label>
-                        <input
-                          type="number"
-                          value={item.cantidad ?? ""}
-                          onChange={(e) =>
-                            actualizarItem(index, "cantidad", e.target.value)
-                          }
-                          step="0.01"
-                          className="w-full bg-neutral-900 border border-neutral-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
-                          placeholder="0"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1">
-                          Precio
-                        </label>
-                        <input
-                          type="number"
-                          value={item.precio ?? ""}
-                          onChange={(e) =>
-                            actualizarItem(index, "precio", e.target.value)
-                          }
-                          step="0.01"
-                          className="w-full bg-neutral-900 border border-neutral-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
-                          placeholder="0.00"
-                        />
-                      </div>
                     </div>
 
                     {formData.tipo === "LUBRICENTRO" && item.productoId && (
@@ -513,9 +547,17 @@ export default function AnotacionForm({
                   {/* Subtotal del item */}
                   {typeof item.cantidad === "number" && item.cantidad > 0 &&
                     typeof item.precio === "number" && item.precio >= 0 && (
-                    <div className="mt-2 text-right text-sm text-gray-400">
-                      Subtotal: $
-                      {((item.cantidad || 0) * (item.precio || 0)).toFixed(2)}
+                    <div className="mt-2 text-right text-sm">
+                      <span className="text-gray-400">
+                        Subtotal: $
+                        {((item.cantidad || 0) * (item.precio || 0)).toFixed(2)}
+                      </span>
+                      {(item as any).precioCosto && (
+                        <span className="text-green-400 ml-3">
+                          Ganancia total: $
+                          {((item.cantidad || 0) * ((item.precio || 0) - ((item as any).precioCosto || 0))).toFixed(2)}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

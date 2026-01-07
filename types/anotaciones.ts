@@ -14,7 +14,8 @@ export interface Anotacion {
 export interface ItemAnotacion {
   cantidad?: number;
   descripcion: string;
-  precio?: number;
+  precio?: number; // Precio de venta unitario
+  precioCosto?: number; // Precio de costo unitario (opcional, para entrada manual)
   unidad?: string; // lts, unidades, etc.
   // Para vincular con un producto existente (ej: lubricentro)
   productoId?: string;

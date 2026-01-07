@@ -78,7 +78,7 @@ export async function crearAnotacion(data: Omit<Anotacion, "id">) {
       // Guardar la anotación
       const payload = {
         fecha: data.fecha
-          ? Timestamp.fromDate(new Date(data.fecha))
+          ? Timestamp.fromDate(new Date(data.fecha + "T12:00:00"))
           : serverTimestamp(),
         tipo: data.tipo,
         titulo: data.titulo,
@@ -100,8 +100,8 @@ export async function crearAnotacion(data: Omit<Anotacion, "id">) {
       id: snap.id,
       fecha:
         d?.fecha instanceof Timestamp
-          ? d.fecha.toDate().toISOString()
-          : new Date().toISOString(),
+          ? d.fecha.toDate().toISOString().split("T")[0]
+          : new Date().toISOString().split("T")[0],
       tipo: d.tipo,
       titulo: d.titulo,
       descripcion: d.descripcion || "",
@@ -126,15 +126,18 @@ export async function obtenerAnotaciones() {
     const snaps = await getDocs(q);
     const anotaciones = snaps.docs.map((docSnap) => {
       const d = docSnap.data() as any;
-      const fechaISO =
-        d?.fecha instanceof Timestamp ? d.fecha.toDate().toISOString() : "";
+      // Convertir Timestamp a fecha en formato YYYY-MM-DD (sin zona horaria)
+      const fechaStr =
+        d?.fecha instanceof Timestamp
+          ? d.fecha.toDate().toISOString().split("T")[0]
+          : "";
       const createdAt =
         d?.createdAt instanceof Timestamp ? d.createdAt.toDate() : undefined;
       const updatedAt =
         d?.updatedAt instanceof Timestamp ? d.updatedAt.toDate() : undefined;
       const anot: Anotacion = {
         id: docSnap.id,
-        fecha: fechaISO,
+        fecha: fechaStr,
         tipo: d?.tipo,
         titulo: d?.titulo,
         descripcion: d?.descripcion || "",
@@ -166,7 +169,9 @@ export async function obtenerAnotacionPorId(id: string) {
     const anotacion = {
       id: snap.id,
       fecha:
-        d?.fecha instanceof Timestamp ? d.fecha.toDate().toISOString() : "",
+        d?.fecha instanceof Timestamp
+          ? d.fecha.toDate().toISOString().split("T")[0]
+          : "",
       tipo: d?.tipo,
       titulo: d?.titulo,
       descripcion: d?.descripcion || "",
@@ -192,7 +197,7 @@ export async function actualizarAnotacion(
   try {
     const updateData: any = { updatedAt: serverTimestamp() };
 
-    if (data.fecha) updateData.fecha = Timestamp.fromDate(new Date(data.fecha));
+    if (data.fecha) updateData.fecha = Timestamp.fromDate(new Date(data.fecha + "T12:00:00"));
     if (data.tipo) updateData.tipo = data.tipo;
     if (data.titulo) updateData.titulo = data.titulo;
     if (data.descripcion !== undefined)
@@ -208,7 +213,9 @@ export async function actualizarAnotacion(
     const anotacionActualizada: Anotacion = {
       id: snap.id,
       fecha:
-        d?.fecha instanceof Timestamp ? d.fecha.toDate().toISOString() : "",
+        d?.fecha instanceof Timestamp
+          ? d.fecha.toDate().toISOString().split("T")[0]
+          : "",
       tipo: d?.tipo,
       titulo: d?.titulo,
       descripcion: d?.descripcion || "",
@@ -302,7 +309,9 @@ export async function obtenerAnotacionesPorRango(
         return {
           id: docSnap.id,
           fecha:
-            d?.fecha instanceof Timestamp ? d.fecha.toDate().toISOString() : "",
+            d?.fecha instanceof Timestamp
+              ? d.fecha.toDate().toISOString().split("T")[0]
+              : "",
           tipo: d?.tipo,
           titulo: d?.titulo,
           descripcion: d?.descripcion || "",

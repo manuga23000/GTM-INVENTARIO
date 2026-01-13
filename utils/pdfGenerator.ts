@@ -66,28 +66,9 @@ export async function generarReporteSemanal(
     const fecha = new Date(anotacion.fecha + 'T12:00:00').toLocaleDateString("es-AR");
 
     for (const item of anotacion.items) {
-      let precioCosto = 0;
-      let precioVenta = 0;
-
-      // Si el item tiene precioCosto especificado manualmente, usarlo
-      if ((item as any).precioCosto !== undefined) {
-        precioCosto = (item as any).precioCosto;
-        precioVenta = item.precio || 0;
-      }
-      // Si es LUBRICENTRO y tiene productoId, buscar precios del producto
-      else if (anotacion.tipo === "LUBRICENTRO" && item.productoId) {
-        const producto = productos.find((p) => p.id === item.productoId);
-        if (producto) {
-          precioCosto = producto.precioCosto || 0;
-          precioVenta = producto.precioVenta || 0;
-        }
-      }
-      // Para entrada manual sin precioCosto especificado, usar el precio del item
-      else {
-        precioVenta = item.precio || 0;
-        // Asumir 50% de margen para calcular costo aproximado si no se especificó
-        precioCosto = precioVenta / 1.5;
-      }
+      // SIEMPRE usar precios guardados en la anotación, NUNCA buscar en inventario
+      const precioCosto = (item as any).precioCosto || 0;
+      const precioVenta = item.precio || 0;
 
       const cantidad = item.cantidad || 1;
       const subtotal = precioVenta * cantidad;

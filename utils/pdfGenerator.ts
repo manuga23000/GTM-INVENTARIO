@@ -74,9 +74,21 @@ export async function generarReporteSemanal(
       const subtotal = precioVenta * cantidad;
       const ganancia = (precioVenta - precioCosto) * cantidad;
 
+      // Determinar qué mostrar en la descripción
+      let descripcionMostrar = item.descripcion;
+
+      // Si el item tiene productoId, buscar el producto
+      if (item.productoId) {
+        const producto = productos.find((p) => p.id === item.productoId);
+        // Si es un filtro, mostrar el código en lugar de la descripción
+        if (producto && producto.categoria === "Filtros") {
+          descripcionMostrar = producto.codigo;
+        }
+      }
+
       items.push({
         fecha,
-        descripcion: item.descripcion,
+        descripcion: descripcionMostrar,
         cantidad,
         precioCosto,
         precioVenta,
@@ -130,8 +142,8 @@ export async function generarReporteSemanal(
       cellPadding: 4,
     },
     columnStyles: {
-      0: { cellWidth: 26 }, // Fecha
-      1: { cellWidth: 51 }, // Descripción
+      0: { cellWidth: 28 }, // Fecha - aumentado para evitar que se divida en dos líneas
+      1: { cellWidth: 48 }, // Descripción - reducido ligeramente para compensar
       2: { cellWidth: 15, halign: "center" }, // Cantidad
       3: { cellWidth: 32, halign: "right" }, // P. Costo
       4: { cellWidth: 32, halign: "right", fontStyle: "bold" }, // P. Venta en negrita

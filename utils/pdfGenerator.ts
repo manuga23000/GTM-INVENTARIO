@@ -163,7 +163,17 @@ export async function generarReporteSemanal(
   );
 
   // Obtener posición Y después de la tabla
-  const finalY = (doc as any).lastAutoTable.finalY + 10;
+  let finalY = (doc as any).lastAutoTable.finalY + 10;
+
+  // Verificar si hay espacio suficiente para el resumen (necesitamos ~60px)
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const espacioNecesario = 70; // Espacio necesario para todo el resumen
+
+  if (finalY + espacioNecesario > pageHeight - 20) {
+    // No hay espacio suficiente, agregar nueva página
+    doc.addPage();
+    finalY = 20; // Reiniciar Y position en la nueva página
+  }
 
   // Resumen
   doc.setFontSize(16);
@@ -214,7 +224,6 @@ export async function generarReporteSemanal(
   );
 
   // Footer
-  const pageHeight = doc.internal.pageSize.getHeight();
   doc.setFontSize(10);
   doc.setTextColor(128, 128, 128);
   doc.setFont("helvetica", "normal");
@@ -223,7 +232,7 @@ export async function generarReporteSemanal(
       "es-AR"
     )} a las ${new Date().toLocaleTimeString("es-AR")}`,
     pageWidth / 2,
-    pageHeight - 10,
+    doc.internal.pageSize.getHeight() - 10,
     { align: "center" }
   );
 

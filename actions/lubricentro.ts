@@ -6,8 +6,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  orderBy,
-  query,
   runTransaction,
   Timestamp,
 } from "firebase/firestore";
@@ -114,8 +112,11 @@ export async function eliminarProductoLubricentro(id: string) {
 // Obtener todos los productos
 export async function obtenerProductosLubricentro() {
   try {
-    const snap = await getDocs(query(collection(db, COL), orderBy("createdAt", "desc")));
+    // Sin orderBy en la consulta: Firestore excluiría en silencio los productos sin "createdAt"
+    // (por ejemplo, cargados a mano desde la consola). Ordenamos acá: más recientes primero.
+    const snap = await getDocs(collection(db, COL));
     const productos = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as ProductoLubricentro[];
+    productos.sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
     return { success: true as const, data: productos };
   } catch (error) {
     console.error("Error al obtener productos:", error);

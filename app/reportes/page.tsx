@@ -42,11 +42,14 @@ export default function ReportesPage() {
   const [fechaFin, setFechaFin] = useState(inicial.fin);
   const [anotaciones, setAnotaciones] = useState<Anotacion[]>([]);
   const [productos, setProductos] = useState<ProductoLubricentro[]>([]);
-  const [cargando, setCargando] = useState(true);
+  // Período cuyos datos ya están cargados: "cargando" se deriva de esto, así nunca queda trabado
+  const [periodoCargado, setPeriodoCargado] = useState("");
   const [generando, setGenerando] = useState(false);
   const [error, setError] = useState("");
 
-  const rangoInvalido = fechaInicio && fechaFin && fechaInicio > fechaFin;
+  const rangoInvalido = Boolean(fechaInicio && fechaFin && fechaInicio > fechaFin);
+  const clavePeriodo = `${fechaInicio}|${fechaFin}`;
+  const cargando = !rangoInvalido && Boolean(fechaInicio && fechaFin) && periodoCargado !== clavePeriodo;
 
   // Productos: para estimar el costo de items vendidos que no lo tienen cargado
   useEffect(() => {
@@ -67,7 +70,7 @@ export default function ReportesPage() {
       } else {
         setError(res.error);
       }
-      setCargando(false);
+      setPeriodoCargado(`${fechaInicio}|${fechaFin}`);
     });
     return () => {
       cancelado = true;
@@ -83,7 +86,6 @@ export default function ReportesPage() {
 
   const aplicarAtajo = (a: Atajo) => {
     const r = rango(a);
-    setCargando(true);
     setFechaInicio(r.inicio);
     setFechaFin(r.fin);
   };
@@ -130,10 +132,7 @@ export default function ReportesPage() {
               id="r-inicio"
               type="date"
               value={fechaInicio}
-              onChange={(e) => {
-                setCargando(true);
-                setFechaInicio(e.target.value);
-              }}
+              onChange={(e) => setFechaInicio(e.target.value)}
               className="input"
             />
           </div>
@@ -143,10 +142,7 @@ export default function ReportesPage() {
               id="r-fin"
               type="date"
               value={fechaFin}
-              onChange={(e) => {
-                setCargando(true);
-                setFechaFin(e.target.value);
-              }}
+              onChange={(e) => setFechaFin(e.target.value)}
               className="input"
             />
           </div>
@@ -244,7 +240,7 @@ export default function ReportesPage() {
 
         <button
           onClick={handleGenerar}
-          disabled={generando || cargando || Boolean(rangoInvalido)}
+          disabled={generando || cargando || rangoInvalido}
           className="btn btn-primary mb-6 w-full py-3 text-base sm:w-auto"
         >
           {generando ? <Loader2 className="h-5 w-5 animate-spin" /> : <Download className="h-5 w-5" />}

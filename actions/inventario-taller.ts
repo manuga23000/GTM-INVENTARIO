@@ -5,8 +5,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  orderBy,
-  query,
   Timestamp,
   updateDoc,
 } from "firebase/firestore";
@@ -49,8 +47,10 @@ export async function crearItemTaller(item: DatosItem) {
 // Obtener todos los items
 export async function obtenerItemsTaller() {
   try {
-    const snap = await getDocs(query(collection(db, COLLECTION_NAME), orderBy("nombre")));
+    // Ordenamos en memoria para no excluir items sin "nombre" (orderBy de Firestore los descarta)
+    const snap = await getDocs(collection(db, COLLECTION_NAME));
     const items = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as ItemTaller[];
+    items.sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es", { numeric: true }));
     return { success: true as const, data: items };
   } catch (error) {
     console.error("Error al obtener items:", error);

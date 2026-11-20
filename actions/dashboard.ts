@@ -48,9 +48,10 @@ export async function getDashboardData(): Promise<DashboardData> {
     criticos.sort((a, b) => (a.stock || 0) - (b.stock || 0));
 
     const anotacionesMes = anotMes.success ? anotMes.data : [];
-    const resumenMes = calcularResumen(anotacionesMes);
+    const resumenMes = calcularResumen(anotacionesMes, productos);
     const resumenSemana = calcularResumen(
-      anotacionesMes.filter((a) => a.fecha >= semana.inicio && a.fecha <= semana.fin)
+      anotacionesMes.filter((a) => a.fecha >= semana.inicio && a.fecha <= semana.fin),
+      productos
     );
 
     // Serializamos a objetos planos (los Timestamp no pasan a componentes cliente)

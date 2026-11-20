@@ -7,6 +7,7 @@ import { obtenerProductosLubricentro } from "@/actions/lubricentro";
 import { useFeedback } from "@/components/ui/Feedback";
 import { PageHeader, StatCard } from "@/components/ui";
 import { Anotacion } from "@/types/anotaciones";
+import { ProductoLubricentro } from "@/types/lubricentro";
 import { calcularResumen } from "@/lib/resumen";
 import { formatCurrency, formatFecha, formatNumber, formatPercent, hoyISO, mesDe, semanaDe, sumarDias } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -40,11 +41,19 @@ export default function ReportesPage() {
   const [fechaInicio, setFechaInicio] = useState(inicial.inicio);
   const [fechaFin, setFechaFin] = useState(inicial.fin);
   const [anotaciones, setAnotaciones] = useState<Anotacion[]>([]);
+  const [productos, setProductos] = useState<ProductoLubricentro[]>([]);
   const [cargando, setCargando] = useState(true);
   const [generando, setGenerando] = useState(false);
   const [error, setError] = useState("");
 
   const rangoInvalido = fechaInicio && fechaFin && fechaInicio > fechaFin;
+
+  // Productos: para estimar el costo de items vendidos que no lo tienen cargado
+  useEffect(() => {
+    obtenerProductosLubricentro().then((res) => {
+      if (res.success) setProductos(res.data);
+    });
+  }, []);
 
   // Vista previa: se recalcula cada vez que cambia el período
   useEffect(() => {
@@ -65,7 +74,7 @@ export default function ReportesPage() {
     };
   }, [fechaInicio, fechaFin, rangoInvalido]);
 
-  const resumen = useMemo(() => calcularResumen(anotaciones), [anotaciones]);
+  const resumen = useMemo(() => calcularResumen(anotaciones, productos), [anotaciones, productos]);
 
   const atajoActivo = ATAJOS.find((a) => {
     const r = rango(a.value);
@@ -86,8 +95,6 @@ export default function ReportesPage() {
     }
     setGenerando(true);
     try {
-      const productosRes = await obtenerProductosLubricentro();
-      const productos = productosRes.success ? productosRes.data : [];
       const { generarReporteSemanal } = await import("@/utils/pdfGenerator");
       const result = await generarReporteSemanal(resumen, productos, fechaInicio, fechaFin);
       toast(`PDF descargado: ${result.nombreArchivo}`);
@@ -152,37 +159,86 @@ export default function ReportesPage() {
 
       {/* Resumen */}
       <div className={cn("transition-opacity", cargando && "opacity-50")}>
-        <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard
             icon={Receipt}
             label="Ventas"
             value={formatCurrency(resumen.totalVentas)}
-            hint={`${resumen.cantidadOperaciones} operaciones`}
+            hint={`${resumen.cantidadOperaciones} operaciones · ticket ${formatCurrency(resumen.ticketPromedio)}`}
           />
           <StatCard
             icon={TrendingUp}
-            label="Ganancia"
+            label="Ganancia bruta"
             tone="success"
             value={formatCurrency(resumen.totalGanancia)}
-            hint={`Costos ${formatCurrency(resumen.totalCostos)}`}
+            hint={`Margen ${formatPercent(resumen.margenPromedio)} · costo ${formatCurrency(resumen.totalCostos)}`}
           />
-          <StatCard icon={Percent} label="Margen" value={formatPercent(resumen.margenPromedio)} />
+          <StatCard
+            icon={Percent}
+            label="Margen productos"
+            value={formatPercent(resumen.margenProductos)}
+            hint={`Recargo s/ costo ${formatPercent(resumen.recargoPromedio)}`}
+          />
           <StatCard
             icon={Wallet}
             label="Resultado neto"
             tone={resumen.resultadoNeto < 0 ? "danger" : "success"}
             value={formatCurrency(resumen.resultadoNeto)}
-            hint={`Gastos ${formatCurrency(resumen.totalGastos)}`}
+            hint={`Gastos ${formatCurrency(resumen.totalGastos)} · margen neto ${formatPercent(resumen.margenNeto)}`}
           />
         </div>
 
-        {resumen.lineasSinCosto > 0 && (
+        {/* Ventas por tipo */}
+        {resumen.porTipo.length > 0 && (
+          <div className="card mb-4 overflow-x-auto">
+            <table className="w-full min-w-[520px]">
+              <thead className="border-b border-neutral-800 bg-neutral-950/60">
+                <tr>
+                  <th className="th">Tipo</th>
+                  <th className="th text-right">Ventas</th>
+                  <th className="th text-right">Costo</th>
+                  <th className="th text-right">Ganancia</th>
+                  <th className="th text-right">Margen</th>
+                  <th className="th text-right">Particip.</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-800">
+                {resumen.porTipo.map((g) => (
+                  <tr key={g.clave}>
+                    <td className="td text-white">
+                      {g.etiqueta} <span className="text-xs text-neutral-500">({g.operaciones})</span>
+                    </td>
+                    <td className="td text-right text-white tabular">{formatCurrency(g.ventas)}</td>
+                    <td className="td text-right text-neutral-400 tabular">{formatCurrency(g.costo)}</td>
+                    <td className={cn("td text-right tabular", g.ganancia < 0 ? "text-red-400" : "text-emerald-400")}>
+                      {formatCurrency(g.ganancia)}
+                    </td>
+                    <td className="td text-right text-neutral-300 tabular">{formatPercent(g.margen)}</td>
+                    <td className="td text-right text-neutral-400 tabular">{formatPercent(g.participacion)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {(resumen.lineasSinCosto > 0 || resumen.lineasEstimadas > 0) && (
           <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>
-              {resumen.lineasSinCosto} item(s) vendidos no tienen precio de costo cargado: la ganancia de esos items
-              aparece igual al precio de venta.
-            </p>
+            <div className="space-y-1">
+              {resumen.lineasEstimadas > 0 && (
+                <p>
+                  {resumen.lineasEstimadas} item(s) no tenían costo cargado: se estimó con el costo actual del
+                  inventario ({formatCurrency(resumen.costoEstimado)}).
+                </p>
+              )}
+              {resumen.lineasSinCosto > 0 && (
+                <p>
+                  {resumen.lineasSinCosto} item(s) por {formatCurrency(resumen.ventasSinCosto)} no tienen costo y no se
+                  puede estimar: la ganancia puede estar sobrestimada. No se usan para el margen de productos.
+                </p>
+              )}
+            </div>
           </div>
         )}
 
@@ -209,7 +265,10 @@ export default function ReportesPage() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold text-white tabular">{formatCurrency(p.total)}</p>
-                    <p className="text-xs text-emerald-400 tabular">+{formatCurrency(p.ganancia)}</p>
+                    <p className="text-xs text-emerald-400 tabular">
+                      +{formatCurrency(p.ganancia)}
+                      {p.margen != null && <span className="text-neutral-500"> · {formatPercent(p.margen)}</span>}
+                    </p>
                   </div>
                 </li>
               ))}

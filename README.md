@@ -30,14 +30,18 @@ NEXT_PUBLIC_FIREBASE_APP_ID=
 | --- | --- |
 | `app/` | Páginas (inicio, lubricentro, inventario-taller, anotaciones, reportes) |
 | `actions/` | Lectura/escritura en Firestore. El stock se modifica siempre dentro de transacciones |
+| `actions/ingresos.ts` | Ingreso de mercadería: suma stock, actualiza costos y guarda el comprobante en `ingresos_mercaderia` |
 | `components/ui/` | Componentes reutilizables: `Modal`, `NumberInput`, avisos/diálogos (`Feedback`), chips, paginación |
 | `lib/format.ts` | Formato de pesos, fechas (zona Argentina) y parseo de números (`1.500,50`) |
 | `lib/stock.ts` | Estado de stock (sin / bajo / ok) y tipo de filtro |
 | `lib/resumen.ts` | Cálculo de ventas, costos, ganancia y gastos (dashboard, reportes y PDF) |
-| `utils/pdfGenerator.ts` | PDF de ventas y PDF de filtros |
+| `utils/pdfGenerator.ts` | PDF de ventas y PDF de filtros (con el logo de `public/logo-gtm-pdf.png`) |
 
 ## Reglas de negocio
 
 - **Stock**: crear una anotación de Lubricentro descuenta stock; editarla ajusta la diferencia; anularla lo devuelve.
 - **Stock bajo**: cada producto puede tener su propio mínimo (por defecto 2).
 - **Gastos / Alquiler** no cuentan como ventas: se restan en el "resultado neto".
+- **Aumento masivo de precios** (Lubricentro → Precios): se aplica a los productos filtrados; puede tocar costo, venta o ambos y redondear la venta hacia arriba.
+- **Ingreso de mercadería** (Lubricentro → Ingreso): suma stock y, si se elige, actualiza el costo y recalcula la venta manteniendo el recargo.
+- **Ganancia en reportes**: si un item vendido no tiene costo cargado pero está vinculado a un producto, se estima con el costo actual del producto. La mano de obra cuenta como ganancia completa.

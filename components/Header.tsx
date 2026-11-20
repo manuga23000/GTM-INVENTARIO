@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, FileText, Home, Package, Wrench } from "lucide-react";
@@ -23,9 +24,14 @@ export default function Header() {
       <header className="sticky top-0 z-50 border-b border-neutral-800/80 bg-black/85 pt-[env(safe-area-inset-top)] backdrop-blur">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:h-16">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="rounded-lg bg-brand-600 p-1.5">
-              <Wrench className="h-5 w-5 text-white" />
-            </div>
+            <Image
+              src="/logo-gtm.png"
+              alt="Logo GTM"
+              width={40}
+              height={40}
+              priority
+              className="h-9 w-9 rounded-full bg-white ring-2 ring-brand-600/70 sm:h-10 sm:w-10"
+            />
             <div className="leading-tight">
               <p className="font-bold text-white">GTM Inventario</p>
               <p className="hidden text-[11px] text-neutral-400 sm:block">Grandoli Taller Mecánico</p>

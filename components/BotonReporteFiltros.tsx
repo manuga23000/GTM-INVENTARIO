@@ -18,8 +18,9 @@ export default function BotonReporteFiltros() {
         return;
       }
       // jsPDF se carga recién al usarlo (no pesa en la carga inicial de la página)
-      const { generarReporteFiltros } = await import("@/utils/pdfGenerator");
-      const { nombreArchivo } = generarReporteFiltros(resultado.data);
+      const { generarReporteFiltros, cargarLogoPDF } = await import("@/utils/pdfGenerator");
+      const logo = await cargarLogoPDF();
+      const { nombreArchivo } = generarReporteFiltros(resultado.data, { logo });
       toast(`PDF descargado: ${nombreArchivo}`);
     } catch (error) {
       console.error("Error al generar PDF:", error);
@@ -33,11 +34,11 @@ export default function BotonReporteFiltros() {
     <button
       onClick={generarPDF}
       disabled={generando}
-      className="btn btn-secondary flex-1 sm:flex-none"
+      className="btn btn-secondary"
       title="Generar PDF con todos los filtros organizados por tipo"
     >
       {generando ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-      {generando ? "Generando..." : "PDF de filtros"}
+      {generando ? "Generando..." : "PDF filtros"}
     </button>
   );
 }

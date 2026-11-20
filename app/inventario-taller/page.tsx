@@ -22,15 +22,20 @@ export default function InventarioTallerPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ItemTaller | undefined>();
 
-  const cargar = async () => {
-    const result = await obtenerItemsTaller();
+  const aplicarResultado = (result: Awaited<ReturnType<typeof obtenerItemsTaller>>) => {
     if (result.success) setItems(result.data);
     else toast(result.error, "error");
     setLoading(false);
   };
 
+  const cargar = async () => aplicarResultado(await obtenerItemsTaller());
+
   useEffect(() => {
-    cargar();
+    let activo = true;
+    obtenerItemsTaller().then((r) => activo && aplicarResultado(r));
+    return () => {
+      activo = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

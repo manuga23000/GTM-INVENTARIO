@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Edit, MapPin, Minus, Package, Plus, Trash2 } from "lucide-react";
+import { Edit, MapPin, Minus, Package, PackagePlus, Percent, Plus, Trash2 } from "lucide-react";
+import AumentoPreciosModal from "@/components/AumentoPreciosModal";
+import IngresoMercaderiaModal from "@/components/IngresoMercaderiaModal";
 import ProductoLubricentroForm from "@/components/ProductoLubricentroForm";
 import BotonReporteFiltros from "@/components/BotonReporteFiltros";
 import { useFeedback } from "@/components/ui/Feedback";
@@ -97,19 +99,26 @@ export default function LubricentroInventario() {
   const [orden, setOrden] = useState<Orden>("recientes");
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
+  const [showPrecios, setShowPrecios] = useState(false);
+  const [showIngreso, setShowIngreso] = useState(false);
   const [editing, setEditing] = useState<ProductoLubricentro | undefined>();
   const [ultimoProducto, setUltimoProducto] = useState<ProductoLubricentro | undefined>();
   const [ajustando, setAjustando] = useState<string | null>(null);
 
-  const cargarProductos = async () => {
-    const result = await obtenerProductosLubricentro();
+  const aplicarResultado = (result: Awaited<ReturnType<typeof obtenerProductosLubricentro>>) => {
     if (result.success) setProductos(result.data);
     else toast(result.error, "error");
     setLoading(false);
   };
 
+  const cargarProductos = async () => aplicarResultado(await obtenerProductosLubricentro());
+
   useEffect(() => {
-    cargarProductos();
+    let activo = true;
+    obtenerProductosLubricentro().then((r) => activo && aplicarResultado(r));
+    return () => {
+      activo = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -260,13 +269,26 @@ export default function LubricentroInventario() {
         title="Lubricentro"
         description="Productos, stock y precios"
         actions={
-          <>
-            <BotonReporteFiltros />
-            <button onClick={handleNuevo} className="btn btn-primary flex-1 sm:flex-none">
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+            <button onClick={handleNuevo} className="btn btn-primary sm:order-last">
               <Plus className="h-4 w-4" />
               Nuevo producto
             </button>
-          </>
+            <button onClick={() => setShowIngreso(true)} className="btn btn-secondary">
+              <PackagePlus className="h-4 w-4" />
+              Ingreso
+            </button>
+            <button
+              onClick={() => setShowPrecios(true)}
+              disabled={filtrados.length === 0}
+              className="btn btn-secondary"
+              title="Aumentar o bajar precios de los productos filtrados"
+            >
+              <Percent className="h-4 w-4" />
+              Precios
+            </button>
+            <BotonReporteFiltros />
+          </div>
         }
       />
 
@@ -514,6 +536,29 @@ export default function LubricentroInventario() {
             itemLabel="productos"
           />
         </>
+      )}
+
+      {showPrecios && (
+        <AumentoPreciosModal
+          productos={filtrados}
+          alcance={
+            hayFiltros
+              ? `Se aplica a los ${filtrados.length} productos filtrados${
+                  categoria !== "Todos" ? ` (${categoria}${tipoFiltro !== "Todos" ? ` · ${tipoFiltro}` : ""})` : ""
+                }${searchTerm ? ` que coinciden con “${searchTerm}”` : ""}`
+              : `Se aplica a TODOS los productos (${filtrados.length}). Usá los filtros para elegir categoría o marca.`
+          }
+          onClose={() => setShowPrecios(false)}
+          onDone={cargarProductos}
+        />
+      )}
+
+      {showIngreso && (
+        <IngresoMercaderiaModal
+          productos={productos}
+          onClose={() => setShowIngreso(false)}
+          onDone={cargarProductos}
+        />
       )}
 
       {showForm && (

@@ -97,8 +97,9 @@ export default function ReportesPage() {
     }
     setGenerando(true);
     try {
-      const { generarReporteSemanal } = await import("@/utils/pdfGenerator");
-      const result = await generarReporteSemanal(resumen, productos, fechaInicio, fechaFin);
+      const { generarReporteSemanal, cargarLogoPDF } = await import("@/utils/pdfGenerator");
+      const logo = await cargarLogoPDF();
+      const result = await generarReporteSemanal(resumen, productos, fechaInicio, fechaFin, { logo });
       toast(`PDF descargado: ${result.nombreArchivo}`);
     } catch (err) {
       console.error("Error al generar reporte:", err);

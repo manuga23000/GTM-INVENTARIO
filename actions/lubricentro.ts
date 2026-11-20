@@ -8,6 +8,7 @@ import {
   getDocs,
   runTransaction,
   Timestamp,
+  writeBatch,
 } from "firebase/firestore";
 import { ProductoLubricentro } from "@/types/lubricentro";
 import { round2 } from "@/lib/format";
@@ -95,6 +96,42 @@ export async function ajustarStockLubricentro(id: string, delta: number) {
       success: false as const,
       error: error instanceof Error ? error.message : "No se pudo ajustar el stock",
     };
+  }
+}
+
+export interface CambioPrecio {
+  id: string;
+  precioCosto?: number;
+  precioVenta?: number;
+}
+
+/**
+ * Actualiza precios de muchos productos a la vez (aumentos por inflación, listas nuevas).
+ * Los nuevos valores se calculan en la pantalla, así lo que se ve en la vista previa
+ * es exactamente lo que se guarda. Firestore admite hasta 500 escrituras por lote.
+ */
+export async function actualizarPreciosMasivo(cambios: CambioPrecio[]) {
+  try {
+    const validos = cambios.filter(
+      (c) =>
+        c.id &&
+        ((c.precioCosto != null && Number.isFinite(c.precioCosto) && c.precioCosto >= 0) ||
+          (c.precioVenta != null && Number.isFinite(c.precioVenta) && c.precioVenta >= 0))
+    );
+    for (let i = 0; i < validos.length; i += 450) {
+      const batch = writeBatch(db);
+      for (const c of validos.slice(i, i + 450)) {
+        const update: Record<string, unknown> = { updatedAt: Timestamp.now() };
+        if (c.precioCosto != null) update.precioCosto = round2(c.precioCosto);
+        if (c.precioVenta != null) update.precioVenta = round2(c.precioVenta);
+        batch.update(doc(db, COL, c.id), update);
+      }
+      await batch.commit();
+    }
+    return { success: true as const, data: validos.length };
+  } catch (error) {
+    console.error("Error en actualización masiva de precios:", error);
+    return { success: false as const, error: "No se pudieron actualizar los precios" };
   }
 }
 

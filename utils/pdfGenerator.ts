@@ -81,7 +81,40 @@ function asegurarEspacio(doc: jsPDF, y: number, necesario: number): number {
   return y;
 }
 
+// Logo del taller (data URL). Se carga una vez por PDF con cargarLogoPDF().
+let logoDataUrl: string | undefined;
+
+export interface OpcionesPDF {
+  /** Logo como data URL PNG. Si no se pasa, se dibuja un isotipo "GTM". */
+  logo?: string;
+}
+
+/** Descarga el logo de /public y lo convierte a data URL (sólo navegador). */
+export async function cargarLogoPDF(): Promise<string | undefined> {
+  try {
+    const res = await fetch("/logo-gtm-pdf.png");
+    if (!res.ok) return undefined;
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return undefined;
+  }
+}
+
 function logo(doc: jsPDF, x: number, y: number, size: number) {
+  if (logoDataUrl) {
+    try {
+      doc.addImage(logoDataUrl, "PNG", x, y, size, size, "logo-gtm", "FAST");
+      return;
+    } catch {
+      // si la imagen falla, seguimos con el isotipo dibujado
+    }
+  }
   doc.setFillColor(...C.red);
   doc.roundedRect(x, y, size, size, 2, 2, "F");
   doc.setTextColor(...C.white);
@@ -98,15 +131,15 @@ function encabezado(doc: jsPDF, titulo: string, lineasDerecha: string[]): number
   doc.setFillColor(...C.red);
   doc.rect(0, 30, w, 1.2, "F");
 
-  logo(doc, M, 8, 14);
+  logo(doc, M, 6, 18);
   doc.setTextColor(...C.white);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
-  doc.text(EMPRESA, M + 18, 14);
+  doc.text(EMPRESA, M + 22, 14);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
   doc.setTextColor(200, 200, 205);
-  doc.text("Lubricentro  ·  Taller mecánico", M + 18, 19.5);
+  doc.text("Lubricentro  ·  Taller mecánico", M + 22, 19.5);
 
   doc.setTextColor(...C.white);
   doc.setFont("helvetica", "bold");
@@ -128,11 +161,11 @@ function decorarPaginas(doc: jsPDF, tituloCorto: string) {
   for (let i = 1; i <= total; i++) {
     doc.setPage(i);
     if (i > 1) {
-      logo(doc, M, 8, 8);
+      logo(doc, M, 7, 9);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
       doc.setTextColor(...C.ink);
-      doc.text(EMPRESA, M + 11, 13.5);
+      doc.text(EMPRESA, M + 12, 13.5);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(...C.muted);
       doc.text(tituloCorto, w - M, 13.5, { align: "right" });
@@ -231,8 +264,10 @@ export async function generarReporteSemanal(
   entrada: Resumen | Anotacion[],
   productos: ProductoLubricentro[],
   fechaInicio: string,
-  fechaFin: string
+  fechaFin: string,
+  opciones: OpcionesPDF = {}
 ) {
+  logoDataUrl = opciones.logo;
   const resumen = Array.isArray(entrada) ? calcularResumen(entrada, productos) : entrada;
   const productosPorId = new Map(productos.map((p) => [p.id, p]));
 
@@ -574,7 +609,8 @@ export async function generarReporteSemanal(
 // ---------------------------------------------------------------------------
 // Reporte de filtros
 // ---------------------------------------------------------------------------
-export function generarReporteFiltros(data: FiltrosPorTipo) {
+export function generarReporteFiltros(data: FiltrosPorTipo, opciones: OpcionesPDF = {}) {
+  logoDataUrl = opciones.logo;
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const w = ancho(doc);
   const hoy = formatFecha(hoyISO());

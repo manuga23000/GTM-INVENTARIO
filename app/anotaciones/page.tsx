@@ -14,7 +14,12 @@ import {
   StatCard,
 } from "@/components/ui";
 import { Anotacion, ETIQUETAS_TIPO, esGasto, TIPOS_ANOTACION, TipoAnotacion } from "@/types/anotaciones";
-import { cancelarAnotacion, eliminarAnotacion, obtenerAnotaciones } from "@/actions/anotaciones";
+import {
+  cancelarAnotacion,
+  eliminarAnotacion,
+  obtenerAnotaciones,
+  obtenerAnotacionesPorRango,
+} from "@/actions/anotaciones";
 import {
   coincideBusqueda,
   formatCurrency,
@@ -90,7 +95,6 @@ function DetalleItems({ anotacion }: { anotacion: Anotacion }) {
 export default function AnotacionesPage() {
   const { toast, choose, confirm } = useFeedback();
   const [anotaciones, setAnotaciones] = useState<Anotacion[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [tipo, setTipo] = useState("Todos");
   const [periodo, setPeriodo] = useState<Periodo>("mes");
@@ -98,24 +102,39 @@ export default function AnotacionesPage() {
   const [expandida, setExpandida] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Anotacion | undefined>();
-
-  const cargar = async () => {
-    const result = await obtenerAnotaciones();
-    if (result.success) setAnotaciones(result.data);
-    else toast(result.error, "error");
-    setLoading(false);
-  };
+  // Se piden a Firestore sólo las anotaciones del período elegido (no todo el historial).
+  // "version" fuerza recargar después de crear/editar/borrar.
+  const [version, setVersion] = useState(0);
+  const [cargadoPara, setCargadoPara] = useState("");
+  const claveCarga = `${periodo}|${version}`;
+  const loading = cargadoPara !== claveCarga;
 
   useEffect(() => {
-    cargar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const porPeriodo = useMemo(() => {
+    let activo = true;
     const rango = rangoDe(periodo);
-    if (!rango) return anotaciones;
-    return anotaciones.filter((a) => a.fecha >= rango.inicio && a.fecha <= rango.fin);
-  }, [anotaciones, periodo]);
+    const pedido = rango ? obtenerAnotacionesPorRango(rango.inicio, rango.fin) : obtenerAnotaciones();
+    pedido.then((result) => {
+      if (!activo) return;
+      if (result.success) {
+        // Más recientes primero (el filtro por rango devuelve en orden ascendente)
+        const ordenadas = [...result.data].sort(
+          (a, b) =>
+            b.fecha.localeCompare(a.fecha) ||
+            new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+        );
+        setAnotaciones(ordenadas);
+      } else {
+        toast(result.error, "error");
+      }
+      setCargadoPara(`${periodo}|${version}`);
+    });
+    return () => {
+      activo = false;
+    };
+  }, [periodo, version, toast]);
+
+  const cargar = () => setVersion((v) => v + 1);
+  const porPeriodo = anotaciones;
 
   const porBusqueda = useMemo(
     () =>
@@ -258,7 +277,7 @@ export default function AnotacionesPage() {
             { value: "semana", label: "Esta semana" },
             { value: "mes", label: "Este mes" },
             { value: "mesPasado", label: "Mes pasado" },
-            { value: "todo", label: "Todo" },
+            { value: "todo", label: "Todo el historial" },
           ]}
         />
         <FilterChips

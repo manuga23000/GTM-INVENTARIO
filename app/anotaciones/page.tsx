@@ -134,6 +134,14 @@ export default function AnotacionesPage() {
   }, [periodo, version, toast]);
 
   const cargar = () => setVersion((v) => v + 1);
+
+  // Acceso directo del ícono instalado ("Nueva anotación"): /anotaciones?nueva=1
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("nueva")) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    const t = setTimeout(() => setShowForm(true), 0);
+    return () => clearTimeout(t);
+  }, []);
   const porPeriodo = anotaciones;
 
   const porBusqueda = useMemo(

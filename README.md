@@ -37,6 +37,13 @@ NEXT_PUBLIC_FIREBASE_APP_ID=
 | `lib/resumen.ts` | Cálculo de ventas, costos, ganancia y gastos (dashboard, reportes y PDF) |
 | `utils/pdfGenerator.ts` | PDF de ventas y PDF de filtros (con el logo de `public/logo-gtm-pdf.png`) |
 
+## App instalable (PWA)
+
+- `app/manifest.ts`: nombre, colores, íconos y accesos directos (Nueva anotación, Lubricentro, Reportes).
+- `public/sw.js`: service worker mínimo. **No guarda datos en caché** (stock y precios siempre de internet); solo muestra `public/offline.html` sin conexión. Si se modifica, subir `VERSION`.
+- `components/InstalarApp.tsx`: botón "Instalar" (Android/Chrome) o instrucciones (iPhone) en el Inicio.
+- Instalar: Android → menú ⋮ → *Instalar app*; iPhone (Safari) → Compartir → *Agregar a inicio*.
+
 ## Reglas de negocio
 
 - **Stock**: crear una anotación de Lubricentro descuenta stock; editarla ajusta la diferencia; anularla lo devuelve.

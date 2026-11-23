@@ -12,6 +12,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { getDashboardData } from "@/actions/dashboard";
+import InstalarApp from "@/components/InstalarApp";
 import { StatCard } from "@/components/ui";
 import { ETIQUETAS_TIPO, esGasto } from "@/types/anotaciones";
 import { formatCurrency, formatFecha, formatFechaCorta, formatNumber, hoyISO } from "@/lib/format";
@@ -35,6 +36,7 @@ export default async function Home() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:py-8">
+      <InstalarApp />
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white sm:text-3xl">
           Hola 👋 <span className="text-neutral-500">· GTM</span>

@@ -3,13 +3,7 @@
 import { db } from "@/lib/firebase";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { ProductoLubricentro } from "@/types/lubricentro";
-
-export interface FiltrosPorTipo {
-  aceite: ProductoFiltro[];
-  combustible: ProductoFiltro[];
-  aire: ProductoFiltro[];
-  habitaculo: ProductoFiltro[];
-}
+import { tipoFiltroDe } from "@/lib/stock";
 
 export interface ProductoFiltro {
   codigo: string;
@@ -19,87 +13,59 @@ export interface ProductoFiltro {
   tipoFiltro?: string;
 }
 
+export interface FiltrosPorTipo {
+  aceite: ProductoFiltro[];
+  combustible: ProductoFiltro[];
+  aire: ProductoFiltro[];
+  habitaculo: ProductoFiltro[];
+  /** Filtros cuyo tipo no se pudo determinar (antes se mezclaban con "aire"). */
+  sinClasificar: ProductoFiltro[];
+}
+
 export async function obtenerFiltrosOrganizados(): Promise<{
   success: boolean;
   data?: FiltrosPorTipo;
   error?: string;
 }> {
   try {
-    // Obtener todos los productos de la categoría "Filtros"
-    const q = query(
-      collection(db, "lubricentro"),
-      where("categoria", "==", "Filtros")
+    const snap = await getDocs(
+      query(collection(db, "lubricentro"), where("categoria", "==", "Filtros"))
     );
-    const querySnapshot = await getDocs(q);
 
-    const filtrosAceite: ProductoFiltro[] = [];
-    const filtrosCombustible: ProductoFiltro[] = [];
-    const filtrosAire: ProductoFiltro[] = [];
-    const filtrosHabitaculo: ProductoFiltro[] = [];
+    const data: FiltrosPorTipo = {
+      aceite: [],
+      combustible: [],
+      aire: [],
+      habitaculo: [],
+      sinClasificar: [],
+    };
 
-    querySnapshot.forEach((doc) => {
-      const producto = doc.data() as ProductoLubricentro;
-
+    snap.forEach((d) => {
+      const producto = d.data() as ProductoLubricentro;
+      const tipo = tipoFiltroDe(producto);
       const filtro: ProductoFiltro = {
         codigo: producto.codigo || "",
         marca: producto.marca || "",
         descripcion: producto.descripcion || "",
-        stock: producto.stock || 0,
-        tipoFiltro: producto.tipoFiltro,
+        stock: typeof producto.stock === "number" ? producto.stock : 0,
+        tipoFiltro: tipo,
       };
-
-      // Organizar por tipo de filtro
-      if (producto.tipoFiltro === "Aceite") {
-        filtrosAceite.push(filtro);
-      } else if (producto.tipoFiltro === "Combustible") {
-        filtrosCombustible.push(filtro);
-      } else if (producto.tipoFiltro === "Aire") {
-        filtrosAire.push(filtro);
-      } else if (producto.tipoFiltro === "Habitáculo") {
-        filtrosHabitaculo.push(filtro);
-      } else {
-        // Si no tiene tipo especificado, intentar determinar por la descripción
-        const desc = producto.descripcion?.toLowerCase() || "";
-        if (desc.includes("aceite")) {
-          filtrosAceite.push(filtro);
-        } else if (
-          desc.includes("combustible") ||
-          desc.includes("nafta") ||
-          desc.includes("diesel")
-        ) {
-          filtrosCombustible.push(filtro);
-        } else if (desc.includes("aire")) {
-          filtrosAire.push(filtro);
-        } else {
-          // Por defecto, lo ponemos en aire si no está claro
-          filtrosAire.push(filtro);
-        }
-      }
+      if (tipo === "Aceite") data.aceite.push(filtro);
+      else if (tipo === "Combustible") data.combustible.push(filtro);
+      else if (tipo === "Aire") data.aire.push(filtro);
+      else if (tipo === "Habitáculo") data.habitaculo.push(filtro);
+      else data.sinClasificar.push(filtro);
     });
 
-    // Ordenar cada grupo alfabéticamente por descripción
     const ordenar = (a: ProductoFiltro, b: ProductoFiltro) =>
-      a.descripcion.localeCompare(b.descripcion);
+      (a.codigo || a.descripcion).localeCompare(b.codigo || b.descripcion, "es", {
+        numeric: true,
+      });
+    Object.values(data).forEach((lista: ProductoFiltro[]) => lista.sort(ordenar));
 
-    filtrosAceite.sort(ordenar);
-    filtrosCombustible.sort(ordenar);
-    filtrosAire.sort(ordenar);
-    filtrosHabitaculo.sort(ordenar);
-
-    return {
-      success: true,
-      data: {
-        aceite: filtrosAceite,
-        combustible: filtrosCombustible,
-        aire: filtrosAire,
-        habitaculo: filtrosHabitaculo,
-      },
-    };
+    return { success: true, data };
   } catch (error) {
     console.error("Error al obtener filtros:", error);
-    return {
-      success: false,
-      error: "Error al obtener los filtros",
-    };
+    return { success: false, error: "Error al obtener los filtros" };
   }
 }

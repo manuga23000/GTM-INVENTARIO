@@ -1,222 +1,277 @@
 "use client";
 
-import { useState } from "react";
-import { FileText, Download, Calendar, TrendingUp } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, BarChart3, Download, Loader2, Percent, Receipt, TrendingUp, Wallet } from "lucide-react";
 import { obtenerAnotacionesPorRango } from "@/actions/anotaciones";
 import { obtenerProductosLubricentro } from "@/actions/lubricentro";
-import { generarReporteSemanal } from "@/utils/pdfGenerator";
+import { useFeedback } from "@/components/ui/Feedback";
+import { PageHeader, StatCard } from "@/components/ui";
+import { Anotacion } from "@/types/anotaciones";
+import { ProductoLubricentro } from "@/types/lubricentro";
+import { calcularResumen } from "@/lib/resumen";
+import { formatCurrency, formatFecha, formatNumber, formatPercent, hoyISO, mesDe, semanaDe, sumarDias } from "@/lib/format";
+import { cn } from "@/lib/utils";
+
+type Atajo = "semana" | "semanaPasada" | "mes" | "mesPasado";
+
+function rango(atajo: Atajo) {
+  const hoy = hoyISO();
+  switch (atajo) {
+    case "semana":
+      return semanaDe(hoy);
+    case "semanaPasada":
+      return semanaDe(sumarDias(hoy, -7));
+    case "mes":
+      return mesDe(hoy);
+    case "mesPasado":
+      return mesDe(sumarDias(mesDe(hoy).inicio, -1));
+  }
+}
+
+const ATAJOS: { value: Atajo; label: string }[] = [
+  { value: "semana", label: "Esta semana" },
+  { value: "semanaPasada", label: "Semana pasada" },
+  { value: "mes", label: "Este mes" },
+  { value: "mesPasado", label: "Mes pasado" },
+];
 
 export default function ReportesPage() {
-  const [fechaInicio, setFechaInicio] = useState("");
-  const [fechaFin, setFechaFin] = useState("");
-  const [loading, setLoading] = useState(false);
+  const { toast } = useFeedback();
+  const inicial = rango("semana");
+  const [fechaInicio, setFechaInicio] = useState(inicial.inicio);
+  const [fechaFin, setFechaFin] = useState(inicial.fin);
+  const [anotaciones, setAnotaciones] = useState<Anotacion[]>([]);
+  const [productos, setProductos] = useState<ProductoLubricentro[]>([]);
+  // Período cuyos datos ya están cargados: "cargando" se deriva de esto, así nunca queda trabado
+  const [periodoCargado, setPeriodoCargado] = useState("");
+  const [generando, setGenerando] = useState(false);
   const [error, setError] = useState("");
 
-  // Función para establecer rápidamente la semana actual
-  const setSemanaActual = () => {
-    const hoy = new Date();
-    const diaSemana = hoy.getDay();
-    const diff = diaSemana === 0 ? -6 : 1 - diaSemana; // Lunes como inicio de semana
+  const rangoInvalido = Boolean(fechaInicio && fechaFin && fechaInicio > fechaFin);
+  const clavePeriodo = `${fechaInicio}|${fechaFin}`;
+  const cargando = !rangoInvalido && Boolean(fechaInicio && fechaFin) && periodoCargado !== clavePeriodo;
 
-    const lunes = new Date(hoy);
-    lunes.setDate(hoy.getDate() + diff);
+  // Productos: para estimar el costo de items vendidos que no lo tienen cargado
+  useEffect(() => {
+    obtenerProductosLubricentro().then((res) => {
+      if (res.success) setProductos(res.data);
+    });
+  }, []);
 
-    const domingo = new Date(lunes);
-    domingo.setDate(lunes.getDate() + 6);
+  // Vista previa: se recalcula cada vez que cambia el período
+  useEffect(() => {
+    if (!fechaInicio || !fechaFin || rangoInvalido) return;
+    let cancelado = false;
+    obtenerAnotacionesPorRango(fechaInicio, fechaFin).then((res) => {
+      if (cancelado) return;
+      if (res.success) {
+        setAnotaciones(res.data);
+        setError("");
+      } else {
+        setError(res.error);
+      }
+      setPeriodoCargado(`${fechaInicio}|${fechaFin}`);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [fechaInicio, fechaFin, rangoInvalido]);
 
-    setFechaInicio(lunes.toISOString().split("T")[0]);
-    setFechaFin(domingo.toISOString().split("T")[0]);
+  const resumen = useMemo(() => calcularResumen(anotaciones, productos), [anotaciones, productos]);
+
+  const atajoActivo = ATAJOS.find((a) => {
+    const r = rango(a.value);
+    return r.inicio === fechaInicio && r.fin === fechaFin;
+  })?.value;
+
+  const aplicarAtajo = (a: Atajo) => {
+    const r = rango(a);
+    setFechaInicio(r.inicio);
+    setFechaFin(r.fin);
   };
 
-  // Función para establecer la semana pasada
-  const setSemanaPasada = () => {
-    const hoy = new Date();
-    const diaSemana = hoy.getDay();
-    const diff = diaSemana === 0 ? -6 : 1 - diaSemana;
-
-    const lunesActual = new Date(hoy);
-    lunesActual.setDate(hoy.getDate() + diff);
-
-    const lunesPasado = new Date(lunesActual);
-    lunesPasado.setDate(lunesActual.getDate() - 7);
-
-    const domingoPasado = new Date(lunesPasado);
-    domingoPasado.setDate(lunesPasado.getDate() + 6);
-
-    setFechaInicio(lunesPasado.toISOString().split("T")[0]);
-    setFechaFin(domingoPasado.toISOString().split("T")[0]);
-  };
-
-  const handleGenerarReporte = async () => {
-    if (!fechaInicio || !fechaFin) {
-      setError("Por favor selecciona ambas fechas");
+  const handleGenerar = async () => {
+    if (resumen.ventas.length === 0 && resumen.gastos.length === 0) {
+      toast("No hay anotaciones en el período seleccionado", "warning");
       return;
     }
-
-    if (new Date(fechaInicio) > new Date(fechaFin)) {
-      setError("La fecha de inicio debe ser anterior a la fecha fin");
-      return;
-    }
-
-    setError("");
-    setLoading(true);
-
+    setGenerando(true);
     try {
-      // Obtener anotaciones del rango
-      const resultAnotaciones = await obtenerAnotacionesPorRango(
-        fechaInicio,
-        fechaFin
-      );
-
-      if (!resultAnotaciones.success || !resultAnotaciones.data) {
-        setError("Error al obtener las anotaciones");
-        setLoading(false);
-        return;
-      }
-
-      if (resultAnotaciones.data.length === 0) {
-        setError("No hay anotaciones en el período seleccionado");
-        setLoading(false);
-        return;
-      }
-
-      // Obtener productos de lubricentro para los precios
-      const resultProductos = await obtenerProductosLubricentro();
-      const productos =
-        resultProductos.success && resultProductos.data
-          ? resultProductos.data
-          : [];
-
-      // Generar PDF
-      const result = await generarReporteSemanal(
-        resultAnotaciones.data,
-        productos,
-        fechaInicio,
-        fechaFin
-      );
-
-      if (result.success) {
-        // El PDF se descarga automáticamente
-        alert(`Reporte generado: ${result.nombreArchivo}`);
-      }
+      const { generarReporteSemanal, cargarLogoPDF } = await import("@/utils/pdfGenerator");
+      const logo = await cargarLogoPDF();
+      const result = await generarReporteSemanal(resumen, productos, fechaInicio, fechaFin, { logo });
+      toast(`PDF descargado: ${result.nombreArchivo}`);
     } catch (err) {
       console.error("Error al generar reporte:", err);
-      setError("Error al generar el reporte");
+      toast("Error al generar el reporte", "error");
     } finally {
-      setLoading(false);
+      setGenerando(false);
     }
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center space-x-3 mb-2">
-          <div className="bg-red-600 p-2 rounded-lg">
-            <FileText className="w-6 h-6 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-white">Reportes Semanales</h1>
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:py-8">
+      <PageHeader icon={BarChart3} title="Reportes" description="Ventas, costos, ganancias y gastos por período" />
+
+      {/* Período */}
+      <div className="card mb-4 space-y-4 p-4">
+        <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
+          {ATAJOS.map((a) => (
+            <button
+              key={a.value}
+              onClick={() => aplicarAtajo(a.value)}
+              className={cn("chip", atajoActivo === a.value && "chip-active")}
+            >
+              {a.label}
+            </button>
+          ))}
         </div>
-        <p className="text-gray-400">
-          Genera reportes en PDF de ventas, costos y ganancias por semana
-        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label" htmlFor="r-inicio">Desde</label>
+            <input
+              id="r-inicio"
+              type="date"
+              value={fechaInicio}
+              onChange={(e) => setFechaInicio(e.target.value)}
+              className="input"
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="r-fin">Hasta</label>
+            <input
+              id="r-fin"
+              type="date"
+              value={fechaFin}
+              onChange={(e) => setFechaFin(e.target.value)}
+              className="input"
+            />
+          </div>
+        </div>
+        {rangoInvalido && (
+          <p className="text-sm text-red-400">La fecha “desde” debe ser anterior a la fecha “hasta”.</p>
+        )}
+        {error && <p className="text-sm text-red-400">{error}</p>}
       </div>
 
-      {/* Card principal */}
-      <div className="bg-neutral-900 rounded-lg border border-neutral-800 p-6">
-        {/* Botones rápidos */}
-        <div className="mb-6">
-          <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-red-500" />
-            Selección Rápida
-          </h3>
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={setSemanaActual}
-              className="bg-neutral-800 hover:bg-neutral-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-            >
-              Semana Actual
-            </button>
-            <button
-              onClick={setSemanaPasada}
-              className="bg-neutral-800 hover:bg-neutral-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-            >
-              Semana Pasada
-            </button>
-          </div>
+      {/* Resumen */}
+      <div className={cn("transition-opacity", cargando && "opacity-50")}>
+        <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard
+            icon={Receipt}
+            label="Ventas"
+            value={formatCurrency(resumen.totalVentas)}
+            hint={`${resumen.cantidadOperaciones} operaciones · ticket ${formatCurrency(resumen.ticketPromedio)}`}
+          />
+          <StatCard
+            icon={TrendingUp}
+            label="Ganancia bruta"
+            tone="success"
+            value={formatCurrency(resumen.totalGanancia)}
+            hint={`Margen ${formatPercent(resumen.margenPromedio)} · costo ${formatCurrency(resumen.totalCostos)}`}
+          />
+          <StatCard
+            icon={Percent}
+            label="Margen productos"
+            value={formatPercent(resumen.margenProductos)}
+            hint={`Recargo s/ costo ${formatPercent(resumen.recargoPromedio)}`}
+          />
+          <StatCard
+            icon={Wallet}
+            label="Resultado neto"
+            tone={resumen.resultadoNeto < 0 ? "danger" : "success"}
+            value={formatCurrency(resumen.resultadoNeto)}
+            hint={`Gastos ${formatCurrency(resumen.totalGastos)} · margen neto ${formatPercent(resumen.margenNeto)}`}
+          />
         </div>
 
-        {/* Selector de fechas */}
-        <div className="mb-6">
-          <h3 className="text-white font-semibold mb-3">
-            Período Personalizado
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Fecha Inicio
-              </label>
-              <input
-                type="date"
-                value={fechaInicio}
-                onChange={(e) => setFechaInicio(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Fecha Fin
-              </label>
-              <input
-                type="date"
-                value={fechaFin}
-                onChange={(e) => setFechaFin(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Error */}
-        {error && (
-          <div className="mb-4 bg-red-500/20 border border-red-500/50 text-red-400 px-4 py-3 rounded-lg">
-            {error}
+        {/* Ventas por tipo */}
+        {resumen.porTipo.length > 0 && (
+          <div className="card mb-4 overflow-x-auto">
+            <table className="w-full min-w-[520px]">
+              <thead className="border-b border-neutral-800 bg-neutral-950/60">
+                <tr>
+                  <th className="th">Tipo</th>
+                  <th className="th text-right">Ventas</th>
+                  <th className="th text-right">Costo</th>
+                  <th className="th text-right">Ganancia</th>
+                  <th className="th text-right">Margen</th>
+                  <th className="th text-right">Particip.</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-800">
+                {resumen.porTipo.map((g) => (
+                  <tr key={g.clave}>
+                    <td className="td text-white">
+                      {g.etiqueta} <span className="text-xs text-neutral-500">({g.operaciones})</span>
+                    </td>
+                    <td className="td text-right text-white tabular">{formatCurrency(g.ventas)}</td>
+                    <td className="td text-right text-neutral-400 tabular">{formatCurrency(g.costo)}</td>
+                    <td className={cn("td text-right tabular", g.ganancia < 0 ? "text-red-400" : "text-emerald-400")}>
+                      {formatCurrency(g.ganancia)}
+                    </td>
+                    <td className="td text-right text-neutral-300 tabular">{formatPercent(g.margen)}</td>
+                    <td className="td text-right text-neutral-400 tabular">{formatPercent(g.participacion)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
-        {/* Botón generar */}
+        {(resumen.lineasSinCosto > 0 || resumen.lineasEstimadas > 0) && (
+          <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="space-y-1">
+              {resumen.lineasEstimadas > 0 && (
+                <p>
+                  {resumen.lineasEstimadas} item(s) no tenían costo cargado: se estimó con el costo actual del
+                  inventario ({formatCurrency(resumen.costoEstimado)}).
+                </p>
+              )}
+              {resumen.lineasSinCosto > 0 && (
+                <p>
+                  {resumen.lineasSinCosto} item(s) por {formatCurrency(resumen.ventasSinCosto)} no tienen costo y no se
+                  puede estimar: la ganancia puede estar sobrestimada. No se usan para el margen de productos.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         <button
-          onClick={handleGenerarReporte}
-          disabled={loading || !fechaInicio || !fechaFin}
-          className="w-full bg-red-600 hover:bg-red-700 disabled:bg-neutral-700 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+          onClick={handleGenerar}
+          disabled={generando || cargando || rangoInvalido}
+          className="btn btn-primary mb-6 w-full py-3 text-base sm:w-auto"
         >
-          {loading ? (
-            <>
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-              Generando Reporte...
-            </>
-          ) : (
-            <>
-              <Download className="w-5 h-5" />
-              Generar Reporte PDF
-            </>
-          )}
+          {generando ? <Loader2 className="h-5 w-5 animate-spin" /> : <Download className="h-5 w-5" />}
+          {generando ? "Generando PDF..." : `Descargar PDF (${formatFecha(fechaInicio)} – ${formatFecha(fechaFin)})`}
         </button>
 
-        {/* Info adicional */}
-        <div className="mt-6 bg-neutral-800 border border-neutral-700 rounded-lg p-4">
-          <h4 className="text-white font-semibold mb-2 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-green-500" />
-            Contenido del Reporte
-          </h4>
-          <ul className="text-gray-400 text-sm space-y-1">
-            <li>• Listado detallado de todas las ventas del período</li>
-            <li>• Precio de costo y precio de venta de cada producto</li>
-            <li>• Ganancia individual por producto vendido</li>
-            <li>• Totales: Ventas, Costos y Ganancias</li>
-            <li>• Margen de ganancia promedio del período</li>
-          </ul>
-        </div>
+        {/* Más vendidos */}
+        {resumen.topProductos.length > 0 && (
+          <div className="card overflow-hidden">
+            <h2 className="border-b border-neutral-800 px-4 py-3 font-semibold text-white">Más vendidos del período</h2>
+            <ul className="divide-y divide-neutral-800">
+              {resumen.topProductos.map((p, i) => (
+                <li key={p.clave} className="flex items-center gap-3 px-4 py-3">
+                  <span className="w-5 text-sm text-neutral-500 tabular">{i + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-white">{p.descripcion}</p>
+                    <p className="text-xs text-neutral-500 tabular">{formatNumber(p.cantidad)} vendidos</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-white tabular">{formatCurrency(p.total)}</p>
+                    <p className="text-xs text-emerald-400 tabular">
+                      +{formatCurrency(p.ganancia)}
+                      {p.margen != null && <span className="text-neutral-500"> · {formatPercent(p.margen)}</span>}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

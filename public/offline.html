@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#000000" />
+    <title>Sin conexión · GTM Inventario</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: #000;
+        color: #fff;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        text-align: center;
+      }
+      .card { max-width: 360px; }
+      img { width: 96px; height: 96px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px #dc2626; }
+      h1 { margin: 24px 0 8px; font-size: 22px; }
+      p { margin: 0 0 24px; color: #a3a3a3; line-height: 1.5; font-size: 15px; }
+      button {
+        appearance: none;
+        border: 0;
+        border-radius: 10px;
+        background: #dc2626;
+        color: #fff;
+        font-size: 16px;
+        font-weight: 600;
+        padding: 12px 28px;
+        cursor: pointer;
+      }
+      button:active { background: #b91c1c; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <img src="/logo-gtm.png" alt="GTM" />
+      <h1>Sin conexión</h1>
+      <p>
+        GTM Inventario necesita internet para mostrar el stock y guardar ventas con datos actualizados.
+        Revisá el Wi-Fi o los datos móviles.
+      </p>
+      <button onclick="location.reload()">Reintentar</button>
+    </div>
+    <script>
+      // Al volver la conexión, recarga sola
+      window.addEventListener("online", () => location.reload());
+    </script>
+  </body>
+</html>

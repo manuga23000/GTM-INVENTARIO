@@ -1,15 +1,20 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+
+import { FormEvent, useMemo, useState } from "react";
+import { AlertTriangle } from "lucide-react";
+import Modal from "@/components/ui/Modal";
+import NumberInput from "@/components/ui/NumberInput";
+import { useFeedback } from "@/components/ui/Feedback";
 import {
-  ProductoLubricentro,
   CATEGORIAS_LUBRICENTRO,
+  ProductoLubricentro,
+  TIPOS_FILTRO,
+  TipoFiltro,
 } from "@/types/lubricentro";
-import {
-  crearProductoLubricentro,
-  actualizarProductoLubricentro,
-} from "@/actions/lubricentro";
+import { actualizarProductoLubricentro, crearProductoLubricentro } from "@/actions/lubricentro";
+import { calcularMargen, calcularRecargo, formatCurrency, formatPercent, round2 } from "@/lib/format";
+import { STOCK_MINIMO_DEFAULT } from "@/lib/stock";
+import { cn } from "@/lib/utils";
 
 interface ProductoLubricentroFormProps {
   producto?: ProductoLubricentro;
@@ -17,233 +22,187 @@ interface ProductoLubricentroFormProps {
   onSuccess: (producto: ProductoLubricentro) => void;
 }
 
+interface FormState {
+  codigo: string;
+  descripcion: string;
+  marca: string;
+  categoria: string;
+  tipoFiltro: TipoFiltro | "";
+  stock: number | undefined;
+  stockMinimo: number | undefined;
+  precioCosto: number | undefined;
+  precioVenta: number | undefined;
+  ubicacion: string;
+}
+
+const RECARGOS = [30, 40, 50, 60, 80, 100];
+
 export default function ProductoLubricentroForm({
   producto,
   onClose,
   onSuccess,
 }: ProductoLubricentroFormProps) {
-  const [mounted, setMounted] = useState(false);
-  const modalRef = useRef<HTMLDivElement>(null);
-  const previouslyFocusedElement = useRef<Element | null>(null);
-  const prevBodyOverflow = useRef<string | null>(null);
-  const [formData, setFormData] = useState({
+  const { toast, confirm } = useFeedback();
+  const esEdicion = Boolean(producto?.id);
+
+  const [form, setForm] = useState<FormState>(() => ({
     codigo: producto?.codigo || "",
     descripcion: producto?.descripcion || "",
     marca: producto?.marca || "",
     categoria: producto?.categoria || "",
-    tipoFiltro: (producto as any)?.tipoFiltro || "",
-    stock: producto?.stock || 0,
-    precioCosto: producto?.precioCosto || 0,
-    precioVenta: producto?.precioVenta || 0,
+    tipoFiltro: producto?.tipoFiltro || "",
+    stock: producto?.stock ?? 0,
+    stockMinimo: producto?.stockMinimo,
+    precioCosto: producto?.precioCosto || undefined,
+    precioVenta: producto?.precioVenta || undefined,
     ubicacion: producto?.ubicacion || "",
-  });
+  }));
   const [loading, setLoading] = useState(false);
+  const [inicial] = useState(() => JSON.stringify(form));
+  const isDirty = useMemo(() => JSON.stringify(form) !== inicial, [form, inicial]);
 
-  const initialDataRef = useRef(formData);
-  const isDirty = useMemo(() => {
-    return JSON.stringify(formData) !== JSON.stringify(initialDataRef.current);
-  }, [formData]);
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
+    setForm((prev) => ({ ...prev, [key]: value }));
 
-  const confirmClose = () => {
-    if (loading) return; // no cerrar mientras guarda
-    if (!isDirty || confirm("Hay cambios sin guardar. ¿Deseás salir igualmente?")) {
+  const margen = calcularMargen(form.precioCosto, form.precioVenta);
+  const recargo = calcularRecargo(form.precioCosto, form.precioVenta);
+  const ganancia =
+    form.precioVenta != null && form.precioCosto != null ? form.precioVenta - form.precioCosto : undefined;
+  const ventaMenorQueCosto =
+    form.precioCosto != null && form.precioVenta != null && form.precioVenta < form.precioCosto;
+
+  const aplicarRecargo = (pct: number) => {
+    if (!form.precioCosto) return;
+    set("precioVenta", round2(form.precioCosto * (1 + pct / 100)));
+  };
+
+  const pedirCierre = async () => {
+    if (loading) return;
+    if (
+      !isDirty ||
+      (await confirm({
+        title: "¿Salir sin guardar?",
+        message: "Hay cambios sin guardar en este producto.",
+        confirmLabel: "Salir sin guardar",
+        cancelLabel: "Seguir editando",
+        tone: "warning",
+      }))
+    ) {
       onClose();
     }
   };
 
-  // Ensure portals only render on client to avoid hydration mismatch
-  useEffect(() => {
-    setMounted(true);
-    previouslyFocusedElement.current = document.activeElement;
-    // bloquear scroll del body usando estilo directo
-    prevBodyOverflow.current = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        confirmClose();
-      }
-
-      if (e.key === "Tab") {
-        const focusable = modalRef.current?.querySelectorAll<HTMLElement>(
-          'a, button, textarea, input, select, [tabindex]:not([tabindex="-1"])'
-        );
-        if (!focusable || focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-
-        if (e.shiftKey) {
-          if (document.activeElement === first) {
-            e.preventDefault();
-            last.focus();
-          }
-        } else {
-          if (document.activeElement === last) {
-            e.preventDefault();
-            first.focus();
-          }
-        }
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      // restaurar scroll del body
-      if (prevBodyOverflow.current !== null) {
-        document.body.style.overflow = prevBodyOverflow.current;
-      } else {
-        document.body.style.overflow = "";
-      }
-      (previouslyFocusedElement.current as HTMLElement | null)?.focus?.();
-    };
-  }, []);
-
-  // Focus the first interactive element on mount
-  useEffect(() => {
-    if (!mounted) return;
-    const firstInput = modalRef.current?.querySelector<HTMLElement>(
-      "input, select, textarea, button"
-    );
-    firstInput?.focus();
-  }, [mounted]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!form.descripcion.trim()) {
+      toast("La descripción es obligatoria", "error");
+      return;
+    }
     setLoading(true);
+    const datos = {
+      codigo: form.codigo,
+      descripcion: form.descripcion,
+      marca: form.marca,
+      categoria: form.categoria,
+      tipoFiltro: form.categoria === "Filtros" ? form.tipoFiltro : "",
+      stock: form.stock ?? 0,
+      precioCosto: form.precioCosto ?? 0,
+      precioVenta: form.precioVenta ?? 0,
+      ubicacion: form.ubicacion,
+      ...(form.stockMinimo != null ? { stockMinimo: form.stockMinimo } : {}),
+    } satisfies Omit<ProductoLubricentro, "id">;
 
-    try {
-      let result;
-      if (producto?.id) {
-        result = await actualizarProductoLubricentro(producto.id, formData);
-      } else {
-        result = await crearProductoLubricentro(formData);
-      }
+    const result = producto?.id
+      ? await actualizarProductoLubricentro(producto.id, datos)
+      : await crearProductoLubricentro(datos);
+    setLoading(false);
 
-      if (result.success) {
-        // Devolver los datos usados para guardar (sirve para autocompletar el próximo nuevo)
-        const productoGuardado = {
-          ...(producto || ({} as ProductoLubricentro)),
-          ...formData,
-        } as ProductoLubricentro;
-        onSuccess(productoGuardado);
-        onClose();
-      } else {
-        alert("Error al guardar el producto");
-      }
-    } catch (error) {
-      console.error(error);
-      alert("Ocurrió un error inesperado");
-    } finally {
-      setLoading(false);
+    if (result.success) {
+      toast(esEdicion ? "Producto actualizado" : "Producto creado");
+      onSuccess({ ...producto, ...result.data });
+      onClose();
+    } else {
+      toast(result.error || "Error al guardar el producto", "error");
     }
   };
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: ["stock", "precioCosto", "precioVenta"].includes(
-        name
-      )
-        ? Number(value)
-        : value,
-    }));
-  };
-
-  // Al terminar de editar el precio de costo, completar precio de venta con +50%
-  const handleCostoBlur = () => {
-    setFormData((prev) => {
-      const costo = Number(prev.precioCosto);
-      if (!Number.isFinite(costo)) return prev;
-      const venta = Number((costo * 1.5).toFixed(2));
-      return { ...prev, precioVenta: venta };
-    });
-  };
-
-  if (!mounted) return null;
-
-  return createPortal(
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-9999 p-4 animate-fade-in"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) confirmClose();
-      }}
-    >
-      <div
-        ref={modalRef}
-        className="bg-neutral-900 rounded-lg max-w-2xl w-full my-8 max-h-[90vh] overflow-y-auto animate-scale-in"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-neutral-800">
-          <h2 id="modal-title" className="text-xl sm:text-2xl font-bold text-white">
-            {producto ? "Editar Producto" : "Nuevo Producto"}
-          </h2>
+  return (
+    <Modal
+      title={esEdicion ? "Editar producto" : "Nuevo producto"}
+      subtitle={!esEdicion && producto ? "Precargado con los datos del último producto" : undefined}
+      onClose={pedirCierre}
+      closeOnBackdrop={!isDirty}
+      footer={
+        <div className="flex gap-3">
+          <button type="button" onClick={pedirCierre} className="btn btn-secondary flex-1 sm:flex-none">
+            Cancelar
+          </button>
           <button
-            onClick={confirmClose}
-            className="text-gray-400 hover:text-white transition-colors transform hover:scale-110"
+            type="submit"
+            form="producto-form"
+            disabled={loading}
+            className="btn btn-primary flex-1 sm:ml-auto sm:min-w-[140px] sm:flex-none"
           >
-            <X className="w-5 h-5 sm:w-6 sm:h-6" />
+            {loading ? "Guardando..." : esEdicion ? "Guardar cambios" : "Crear producto"}
           </button>
         </div>
+      }
+    >
+      <form id="producto-form" onSubmit={handleSubmit} className="space-y-5">
+        {/* Datos */}
+        <section className="space-y-4">
+          <div>
+            <label className="label" htmlFor="p-descripcion">
+              Descripción <span className="text-brand-500">*</span>
+            </label>
+            <input
+              id="p-descripcion"
+              className="input"
+              value={form.descripcion}
+              onChange={(e) => set("descripcion", e.target.value)}
+              required
+              placeholder={
+                form.categoria === "Filtros"
+                  ? "Vehículos separados por coma: Gol, Fox, Suran"
+                  : "Ej: Aceite sintético 5W30 4L"
+              }
+            />
+          </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
-          {/* Código y Marca */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Código</label>
+              <label className="label" htmlFor="p-codigo">Código</label>
               <input
-                type="text"
-                name="codigo"
-                value={formData.codigo}
-                onChange={handleChange}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
-                placeholder="Ej: A-123, 5W30-XX"
+                id="p-codigo"
+                className="input font-mono"
+                value={form.codigo}
+                onChange={(e) => set("codigo", e.target.value)}
+                placeholder="Ej: WO-130"
+                autoCapitalize="characters"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Marca</label>
+              <label className="label" htmlFor="p-marca">Marca</label>
               <input
-                type="text"
-                name="marca"
-                value={formData.marca}
-                onChange={handleChange}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
-                placeholder="Ej: Shell, Total, YPF"
+                id="p-marca"
+                className="input"
+                value={form.marca}
+                onChange={(e) => set("marca", e.target.value)}
+                placeholder="Ej: Shell, Wega"
               />
             </div>
           </div>
 
-          {/* Descripción y Categoría */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Descripción *</label>
-              <input
-                type="text"
-                name="descripcion"
-                value={formData.descripcion}
-                onChange={handleChange}
-                required
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
-                placeholder="Ej: Aceite sintético 5W30"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Categoría</label>
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div className={cn(form.categoria !== "Filtros" && "col-span-2 sm:col-span-1")}>
+              <label className="label" htmlFor="p-categoria">Categoría</label>
               <select
-                name="categoria"
-                value={formData.categoria}
-                onChange={handleChange}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
+                id="p-categoria"
+                className="input"
+                value={form.categoria}
+                onChange={(e) => set("categoria", e.target.value)}
               >
-                <option value="">Seleccionar categoría</option>
+                <option value="">Sin categoría</option>
                 {CATEGORIAS_LUBRICENTRO.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -251,110 +210,147 @@ export default function ProductoLubricentroForm({
                 ))}
               </select>
             </div>
-          </div>
-
-          {/* Tipo de Filtro (solo visible para Filtros) */}
-          {formData.categoria === "Filtros" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {form.categoria === "Filtros" && (
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Tipo de filtro</label>
+                <label className="label" htmlFor="p-tipo">Tipo de filtro</label>
                 <select
-                  name="tipoFiltro"
-                  value={(formData as any).tipoFiltro}
-                  onChange={handleChange}
-                  className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
+                  id="p-tipo"
+                  className="input"
+                  value={form.tipoFiltro}
+                  onChange={(e) => set("tipoFiltro", e.target.value as TipoFiltro | "")}
                 >
-                  <option value="">Seleccionar tipo</option>
-                  <option value="Aire">Aire</option>
-                  <option value="Aceite">Aceite</option>
-                  <option value="Combustible">Combustible</option>
-                  <option value="Habitáculo">Habitáculo</option>
+                  <option value="">Seleccionar</option>
+                  {TIPOS_FILTRO.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
                 </select>
               </div>
+            )}
+            <div className={cn(form.categoria === "Filtros" && "col-span-2")}>
+              <label className="label" htmlFor="p-ubicacion">Ubicación</label>
+              <input
+                id="p-ubicacion"
+                className="input"
+                value={form.ubicacion}
+                onChange={(e) => set("ubicacion", e.target.value)}
+                placeholder="Ej: Estante A"
+              />
             </div>
+          </div>
+        </section>
+
+        {/* Stock */}
+        <section className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-3 sm:p-4">
+          <h3 className="mb-3 text-sm font-semibold text-white">Stock</h3>
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div>
+              <label className="label" htmlFor="p-stock">Cantidad actual</label>
+              <NumberInput
+                id="p-stock"
+                value={form.stock}
+                onValueChange={(v) => set("stock", v != null && v < 0 ? 0 : v)}
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="p-stockmin">Avisar con</label>
+              <NumberInput
+                id="p-stockmin"
+                value={form.stockMinimo}
+                onValueChange={(v) => set("stockMinimo", v)}
+                placeholder={String(STOCK_MINIMO_DEFAULT)}
+                suffix="o menos"
+              />
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-neutral-500">
+            Se marca como “stock bajo” cuando quedan {form.stockMinimo ?? STOCK_MINIMO_DEFAULT} unidades o
+            menos.
+          </p>
+        </section>
+
+        {/* Precios */}
+        <section className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-3 sm:p-4">
+          <h3 className="mb-3 text-sm font-semibold text-white">Precios</h3>
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div>
+              <label className="label" htmlFor="p-costo">Costo</label>
+              <NumberInput
+                id="p-costo"
+                money
+                value={form.precioCosto}
+                onValueChange={(v) => set("precioCosto", v)}
+                onBlur={() => {
+                  // Sugerencia: si todavía no hay precio de venta, completar con +50%
+                  if (form.precioCosto && !form.precioVenta) aplicarRecargo(50);
+                }}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="p-venta">Venta</label>
+              <NumberInput
+                id="p-venta"
+                money
+                value={form.precioVenta}
+                onValueChange={(v) => set("precioVenta", v)}
+                placeholder="0"
+                className={cn(ventaMenorQueCosto && "border-amber-500")}
+              />
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <p className="mb-1.5 text-xs text-neutral-500">Calcular venta desde el costo:</p>
+            <div className="no-scrollbar -mx-3 flex gap-2 overflow-x-auto px-3 sm:mx-0 sm:flex-wrap sm:px-0">
+              {RECARGOS.map((pct) => (
+                <button
+                  key={pct}
+                  type="button"
+                  disabled={!form.precioCosto}
+                  onClick={() => aplicarRecargo(pct)}
+                  className={cn(
+                    "chip disabled:cursor-not-allowed disabled:opacity-40",
+                    recargo != null && Math.abs(recargo - pct) < 0.05 && "chip-active"
+                  )}
+                >
+                  +{pct}%
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg bg-neutral-900 p-3 text-center">
+            <div>
+              <p className="text-[11px] text-neutral-500 uppercase">Ganancia</p>
+              <p
+                className={cn(
+                  "text-sm font-semibold tabular",
+                  ganancia == null ? "text-neutral-500" : ganancia < 0 ? "text-red-400" : "text-emerald-400"
+                )}
+              >
+                {ganancia == null ? "-" : formatCurrency(ganancia)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-neutral-500 uppercase">Margen</p>
+              <p className="text-sm font-semibold text-white tabular">{formatPercent(margen)}</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-neutral-500 uppercase">Recargo</p>
+              <p className="text-sm font-semibold text-white tabular">{formatPercent(recargo)}</p>
+            </div>
+          </div>
+
+          {ventaMenorQueCosto && (
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-400">
+              <AlertTriangle className="h-4 w-4" />
+              El precio de venta es menor que el costo.
+            </p>
           )}
-
-          {/* Las aplicaciones ahora se cargan en el campo Descripción separadas por comas */}
-
-          {/* Stock y Ubicación */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Stock</label>
-              <input
-                type="number"
-                name="stock"
-                value={formData.stock}
-                onChange={handleChange}
-                min="0"
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Ubicación</label>
-              <input
-                type="text"
-                name="ubicacion"
-                value={formData.ubicacion}
-                onChange={handleChange}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
-                placeholder="Ej: Estante A, Depósito"
-              />
-            </div>
-          </div>
-
-          {/* Precios */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Precio costo</label>
-              <input
-                type="number"
-                name="precioCosto"
-                value={formData.precioCosto}
-                onChange={handleChange}
-                onBlur={handleCostoBlur}
-                min="0"
-                step="0.01"
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Precio venta</label>
-              <input
-                type="number"
-                name="precioVenta"
-                value={formData.precioVenta}
-                onChange={handleChange}
-                min="0"
-                step="0.01"
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
-              />
-            </div>
-          </div>
-
-          
-
-          {/* Botones */}
-          <div className="flex flex-col sm:flex-row gap-3 pt-4">
-            <button
-              type="button"
-              onClick={confirmClose}
-              className="w-full sm:w-auto bg-neutral-800 hover:bg-neutral-700 text-white font-semibold 
-              py-3 px-4 rounded-lg transition-colors transform hover:scale-105 min-h-[44px]"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-semibold 
-              py-3 px-4 rounded-lg transition-colors disabled:opacity-50 transform hover:scale-105 min-h-[44px]"
-            >
-              {loading ? "Guardando..." : producto ? "Actualizar" : "Crear"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>,
-    document.body
+        </section>
+      </form>
+    </Modal>
   );
 }

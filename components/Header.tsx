@@ -1,137 +1,81 @@
 "use client";
+
+import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
-import {
-  Wrench,
-  Package,
-  FileText,
-  Menu,
-  X,
-  BarChart3, // Icono para reportes
-} from "lucide-react";
+import { usePathname } from "next/navigation";
+import { BarChart3, FileText, Home, Package, Wrench } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const LINKS = [
+  { href: "/", label: "Inicio", icon: Home },
+  { href: "/lubricentro", label: "Lubricentro", icon: Package },
+  { href: "/inventario-taller", label: "Taller", icon: Wrench },
+  { href: "/anotaciones", label: "Anotaciones", icon: FileText },
+  { href: "/reportes", label: "Reportes", icon: BarChart3 },
+];
 
 export default function Header() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
+  const activo = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
   return (
-    <header className="bg-black border-b border-neutral-800 sticky top-0 z-50 animate-fade-in">
-      <div className="container mx-auto px-4 py-4 max-w-7xl">
-        <div className="flex items-center justify-between">
-          {/* Logo */}
-          <Link
-            href="/"
-            className="flex items-center space-x-3 transform hover:scale-105 transition-transform"
-          >
-            <div className="bg-red-600 p-2 rounded-lg">
-              <Wrench className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">GTM Inventario</h1>
-              <p className="text-xs text-gray-400">Grandoli Taller Mecánico</p>
+    <>
+      {/* Barra superior */}
+      <header className="sticky top-0 z-50 border-b border-neutral-800/80 bg-black/85 pt-[env(safe-area-inset-top)] backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:h-16">
+          <Link href="/" className="flex items-center gap-2.5">
+            <Image
+              src="/logo-gtm.png"
+              alt="Logo GTM"
+              width={40}
+              height={40}
+              priority
+              className="h-9 w-9 rounded-full bg-white ring-2 ring-brand-600/70 sm:h-10 sm:w-10"
+            />
+            <div className="leading-tight">
+              <p className="font-bold text-white">GTM Inventario</p>
+              <p className="hidden text-[11px] text-neutral-400 sm:block">Grandoli Taller Mecánico</p>
             </div>
           </Link>
 
-          {/* Navegación desktop */}
-          <nav className="hidden md:flex items-center space-x-6">
-            <Link
-              href="/lubricentro"
-              className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors transform hover:scale-105"
-            >
-              <Package className="w-5 h-5" />
-              <span>Lubricentro</span>
-            </Link>
-
-            <Link
-              href="/inventario-taller"
-              className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors transform hover:scale-105"
-            >
-              <Wrench className="w-5 h-5" />
-              <span>Inventario Taller</span>
-            </Link>
-
-            <Link
-              href="/anotaciones"
-              className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors transform hover:scale-105"
-            >
-              <FileText className="w-5 h-5" />
-              <span>Anotaciones</span>
-            </Link>
-
-            <Link
-              href="/reportes"
-              className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors transform hover:scale-105"
-            >
-              <BarChart3 className="w-5 h-5" />
-              <span>Reportes</span>
-            </Link>
+          <nav className="hidden items-center gap-1 md:flex">
+            {LINKS.slice(1).map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  activo(href)
+                    ? "bg-brand-600/15 text-brand-400"
+                    : "text-neutral-300 hover:bg-neutral-800 hover:text-white"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label === "Taller" ? "Inventario Taller" : label}
+              </Link>
+            ))}
           </nav>
-
-          {/* Menú móvil toggle */}
-          <div className="md:hidden">
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="text-white hover:text-red-600 transition-colors"
-            >
-              {mobileMenuOpen ? (
-                <X className="w-6 h-6" />
-              ) : (
-                <Menu className="w-6 h-6" />
-              )}
-            </button>
-          </div>
-
-          {/* Usuario */}
-          <div className="flex items-center space-x-3">
-            <div className="text-right hidden md:block">
-              <p className="text-sm font-semibold text-white">Admin</p>
-              <p className="text-xs text-gray-400">GTM</p>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-red-600 flex items-center justify-center font-bold transform hover:scale-110 transition-transform">
-              A
-            </div>
-          </div>
         </div>
+      </header>
 
-        {/* Menú móvil desplegable */}
-        {mobileMenuOpen && (
-          <div className="md:hidden absolute left-0 right-0 top-full bg-black border-b border-neutral-800 animate-slide-in">
-            <nav className="flex flex-col space-y-4 p-4">
-              <Link
-                href="/lubricentro"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors"
-              >
-                <Package className="w-5 h-5" />
-                <span>Lubricentro</span>
-              </Link>
-              <Link
-                href="/inventario-taller"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors"
-              >
-                <Wrench className="w-5 h-5" />
-                <span>Inventario Taller</span>
-              </Link>
-              <Link
-                href="/anotaciones"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors"
-              >
-                <FileText className="w-5 h-5" />
-                <span>Anotaciones</span>
-              </Link>
-              <Link
-                href="/reportes"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center space-x-2 text-gray-300 hover:text-red-600 transition-colors"
-              >
-                <BarChart3 className="w-5 h-5" />
-                <span>Reportes</span>
-              </Link>
-            </nav>
-          </div>
-        )}
-      </div>
-    </header>
+      {/* Navegación inferior en mobile (más cómoda con el pulgar) */}
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-neutral-800 bg-black/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+        <div className="grid grid-cols-5">
+          {LINKS.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                "flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors",
+                activo(href) ? "text-brand-500" : "text-neutral-400 active:text-white"
+              )}
+            >
+              <Icon className="h-5 w-5" />
+              {label}
+            </Link>
+          ))}
+        </div>
+      </nav>
+    </>
   );
 }

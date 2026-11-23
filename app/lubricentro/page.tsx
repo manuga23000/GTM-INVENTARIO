@@ -1,582 +1,575 @@
 "use client";
-import React, { useState, useEffect } from "react";
-import { Trash2, Edit, Plus, Search, Filter, Package, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
-import { ProductoLubricentro } from "@/types/lubricentro";
+
+import { useEffect, useMemo, useState } from "react";
+import { Edit, MapPin, Minus, Package, PackagePlus, Percent, Plus, Trash2 } from "lucide-react";
+import AumentoPreciosModal from "@/components/AumentoPreciosModal";
+import IngresoMercaderiaModal from "@/components/IngresoMercaderiaModal";
 import ProductoLubricentroForm from "@/components/ProductoLubricentroForm";
-import SkeletonLoader from "@/components/SkeletonLoaders";
 import BotonReporteFiltros from "@/components/BotonReporteFiltros";
+import { useFeedback } from "@/components/ui/Feedback";
 import {
-  obtenerProductosLubricentro,
+  EmptyState,
+  FilterChips,
+  ListSkeleton,
+  PageHeader,
+  Pagination,
+  SearchInput,
+  StockBadge,
+} from "@/components/ui";
+import { CATEGORIAS_LUBRICENTRO, ProductoLubricentro, TIPOS_FILTRO } from "@/types/lubricentro";
+import {
+  ajustarStockLubricentro,
   eliminarProductoLubricentro,
+  obtenerProductosLubricentro,
 } from "@/actions/lubricentro";
+import { calcularMargen, coincideBusqueda, formatCurrency, formatPercent, round2 } from "@/lib/format";
+import { estadoStock, tipoFiltroDe } from "@/lib/stock";
+import { cn } from "@/lib/utils";
+
+const PAGE_SIZE = 20;
+
+type Orden = "recientes" | "descripcion" | "stock" | "precio";
+
+const CATEGORIA_STYLE: Record<string, string> = {
+  Aceites: "bg-sky-500/15 text-sky-300",
+  Filtros: "bg-orange-500/15 text-orange-300",
+  Lubricantes: "bg-yellow-500/15 text-yellow-300",
+  Aditivos: "bg-emerald-500/15 text-emerald-300",
+  Refrigerantes: "bg-violet-500/15 text-violet-300",
+  "Líquido de freno": "bg-rose-500/15 text-rose-300",
+};
+
+function CategoriaBadge({ categoria }: { categoria?: string }) {
+  if (!categoria) return <span className="text-xs text-neutral-600">-</span>;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
+        CATEGORIA_STYLE[categoria] || "bg-neutral-800 text-neutral-300"
+      )}
+    >
+      {categoria}
+    </span>
+  );
+}
+
+function StockStepper({
+  producto,
+  onAjustar,
+  ocupado,
+}: {
+  producto: ProductoLubricentro;
+  onAjustar: (p: ProductoLubricentro, delta: number) => void;
+  ocupado: boolean;
+}) {
+  const stock = producto.stock || 0;
+  return (
+    <div className="inline-flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => onAjustar(producto, -1)}
+        disabled={ocupado || stock <= 0}
+        className="icon-btn h-8 w-8 border border-neutral-800"
+        aria-label={`Restar 1 a ${producto.descripcion}`}
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </button>
+      <StockBadge stock={stock} estado={estadoStock(producto)} />
+      <button
+        type="button"
+        onClick={() => onAjustar(producto, 1)}
+        disabled={ocupado}
+        className="icon-btn h-8 w-8 border border-neutral-800"
+        aria-label={`Sumar 1 a ${producto.descripcion}`}
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
 
 export default function LubricentroInventario() {
+  const { toast, confirm } = useFeedback();
   const [productos, setProductos] = useState<ProductoLubricentro[]>([]);
-  const [filteredProductos, setFilteredProductos] = useState<
-    ProductoLubricentro[]
-  >([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("Todos");
-  const [selectedFilterType, setSelectedFilterType] = useState("Todos");
-  const [showForm, setShowForm] = useState(false);
-  const [editingProducto, setEditingProducto] = useState<
-    ProductoLubricentro | undefined
-  >(undefined);
-  // Guardamos el último producto creado/actualizado para autocompletar el próximo
-  const [ultimoProducto, setUltimoProducto] = useState<
-    ProductoLubricentro | undefined
-  >(undefined);
   const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 20;
+  const [searchTerm, setSearchTerm] = useState("");
+  const [categoria, setCategoria] = useState("Todos");
+  const [tipoFiltro, setTipoFiltro] = useState("Todos");
+  const [filtroStock, setFiltroStock] = useState("todos");
+  const [orden, setOrden] = useState<Orden>("recientes");
+  const [page, setPage] = useState(1);
+  const [showForm, setShowForm] = useState(false);
+  const [showPrecios, setShowPrecios] = useState(false);
+  const [showIngreso, setShowIngreso] = useState(false);
+  const [editing, setEditing] = useState<ProductoLubricentro | undefined>();
+  const [ultimoProducto, setUltimoProducto] = useState<ProductoLubricentro | undefined>();
+  const [ajustando, setAjustando] = useState<string | null>(null);
 
-  const cargarProductos = async () => {
-    setLoading(true);
-    const result = await obtenerProductosLubricentro();
-    if (result.success && result.data) {
-      setProductos(result.data);
-      setFilteredProductos(result.data);
-    }
+  const aplicarResultado = (result: Awaited<ReturnType<typeof obtenerProductosLubricentro>>) => {
+    if (result.success) setProductos(result.data);
+    else toast(result.error, "error");
     setLoading(false);
   };
 
+  const cargarProductos = async () => aplicarResultado(await obtenerProductosLubricentro());
+
   useEffect(() => {
-    cargarProductos();
+    let activo = true;
+    obtenerProductosLubricentro().then((r) => activo && aplicarResultado(r));
+    return () => {
+      activo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    let filtered = productos;
-
-    if (searchTerm) {
-      const q = searchTerm.toLowerCase();
-      filtered = filtered.filter((p) => {
-        const matchBasico =
-          (p.codigo || "").toLowerCase().includes(q) ||
-          (p.descripcion || "").toLowerCase().includes(q) ||
-          (p.marca || "").toLowerCase().includes(q);
-        const matchAplicaciones = Array.isArray((p as any).aplicaciones)
-          ? ((p as any).aplicaciones as string[]).some((a) =>
-              (a || "").toLowerCase().includes(q)
-            )
-          : false;
-        // Si es categoría Filtros, considerar descripcion como lista separada por comas
-        const matchAplicacionesEnDescripcion =
-          p.categoria === "Filtros"
-            ? (p.descripcion || "")
-                .split(",")
-                .map((s) => s.trim().toLowerCase())
-                .some((token) => token.includes(q))
-            : false;
-        return (
-          matchBasico || matchAplicaciones || matchAplicacionesEnDescripcion
-        );
-      });
-    }
-
-    if (selectedCategory !== "Todos") {
-      filtered = filtered.filter((p) => p.categoria === selectedCategory);
-    }
-
-    // Subfiltro para la categoría Filtros
-    if (selectedCategory === "Filtros" && selectedFilterType !== "Todos") {
-      const type = selectedFilterType.toLowerCase();
-      const includesKeyword = (p: ProductoLubricentro, keywords: string[]) => {
-        const haystack = `${p.descripcion || ""} ${p.codigo || ""} ${
-          p.marca || ""
-        }`.toLowerCase();
-        return keywords.some((kw) => haystack.includes(kw));
-      };
-
-      const mapKeywords: Record<string, string[]> = {
-        aire: ["aire"],
-        aceite: ["aceite", "aeite", "oil"],
-        combustible: ["combustible", "nafta", "diesel"],
-        habitáculo: ["habitáculo", "habitaculo", "cabina", "polen"],
-        habitaculo: ["habitáculo", "habitaculo", "cabina", "polen"],
-      };
-
-      filtered = filtered.filter((p: any) => {
-        const t = (p?.tipoFiltro || "").toString().toLowerCase();
-        if (t) {
-          // comparar normalizando acentos sencillamente
-          const norm = (s: string) =>
-            s.normalize("NFD").replace(/\p{Diacritic}/gu, "");
-          return norm(t) === norm(type);
-        }
-        const keywords = mapKeywords[type] || mapKeywords["aire"]; // fallback por si acaso
-        return includesKeyword(p, keywords);
-      });
-    }
-
-    setFilteredProductos(filtered);
-    setCurrentPage(1); // Reset a la primera página cuando cambian los filtros
-  }, [searchTerm, selectedCategory, selectedFilterType, productos]);
-
-  // Calcular productos paginados
-  const totalPages = Math.ceil(filteredProductos.length / itemsPerPage);
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentProductos = filteredProductos.slice(
-    indexOfFirstItem,
-    indexOfLastItem
+  // Filtros por búsqueda + categoría + tipo de filtro (base para contar chips)
+  const porBusqueda = useMemo(
+    () =>
+      productos.filter((p) =>
+        coincideBusqueda(
+          searchTerm,
+          p.codigo,
+          p.descripcion,
+          p.marca,
+          p.ubicacion,
+          p.categoria,
+          ...(Array.isArray(p.aplicaciones) ? p.aplicaciones : [])
+        )
+      ),
+    [productos, searchTerm]
   );
 
-  const handleNuevoProducto = () => {
-    // Si hay un último producto, usamos sus datos como base pero SIN id para que sea un nuevo registro
+  const porCategoria = useMemo(() => {
+    let lista = porBusqueda;
+    if (categoria !== "Todos") lista = lista.filter((p) => p.categoria === categoria);
+    if (categoria === "Filtros" && tipoFiltro !== "Todos") {
+      lista = lista.filter((p) => tipoFiltroDe(p) === tipoFiltro);
+    }
+    return lista;
+  }, [porBusqueda, categoria, tipoFiltro]);
+
+  const filtrados = useMemo(() => {
+    let lista = porCategoria;
+    if (filtroStock !== "todos") lista = lista.filter((p) => estadoStock(p) === filtroStock);
+    const ordenada = [...lista];
+    if (orden === "descripcion") {
+      ordenada.sort((a, b) => (a.descripcion || "").localeCompare(b.descripcion || "", "es"));
+    } else if (orden === "stock") {
+      ordenada.sort((a, b) => (a.stock || 0) - (b.stock || 0));
+    } else if (orden === "precio") {
+      ordenada.sort((a, b) => (b.precioVenta || 0) - (a.precioVenta || 0));
+    }
+    return ordenada;
+  }, [porCategoria, filtroStock, orden]);
+
+  const totalPages = Math.max(1, Math.ceil(filtrados.length / PAGE_SIZE));
+  const paginaActual = Math.min(page, totalPages);
+  const visibles = filtrados.slice((paginaActual - 1) * PAGE_SIZE, paginaActual * PAGE_SIZE);
+
+  const categoriasPresentes = useMemo(() => {
+    const extra = [...new Set(productos.map((p) => p.categoria).filter(Boolean))].filter(
+      (c) => !(CATEGORIAS_LUBRICENTRO as readonly string[]).includes(c)
+    );
+    return [...CATEGORIAS_LUBRICENTRO, ...extra].filter((c) =>
+      porBusqueda.some((p) => p.categoria === c)
+    );
+  }, [productos, porBusqueda]);
+
+  const conteoStock = useMemo(() => {
+    const c = { sin: 0, bajo: 0 };
+    porCategoria.forEach((p) => {
+      const e = estadoStock(p);
+      if (e !== "ok") c[e]++;
+    });
+    return c;
+  }, [porCategoria]);
+
+  const valorFiltrado = useMemo(
+    () =>
+      filtrados.reduce(
+        (acc, p) => {
+          const s = Math.max(0, p.stock || 0);
+          acc.costo += s * (p.precioCosto || 0);
+          acc.venta += s * (p.precioVenta || 0);
+          return acc;
+        },
+        { costo: 0, venta: 0 }
+      ),
+    [filtrados]
+  );
+
+  const cambiarFiltro = <T,>(setter: (v: T) => void) => (v: T) => {
+    setter(v);
+    setPage(1);
+  };
+
+  const handleNuevo = () => {
     if (ultimoProducto) {
-      const { id, ...resto } = ultimoProducto;
-      setEditingProducto(resto as ProductoLubricentro);
+      // Precarga con el último producto guardado pero como registro nuevo
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { id, createdAt, updatedAt, ...resto } = ultimoProducto;
+      setEditing({ ...resto, stock: 0 } as ProductoLubricentro);
     } else {
-      setEditingProducto(undefined);
+      setEditing(undefined);
     }
     setShowForm(true);
   };
 
-  const handleEditarProducto = (producto: ProductoLubricentro) => {
-    setEditingProducto(producto);
+  const handleEditar = (p: ProductoLubricentro) => {
+    setEditing(p);
     setShowForm(true);
   };
 
-  const handleEliminarProducto = async (id: string, descripcion: string) => {
-    if (confirm(`¿Estás seguro de eliminar "${descripcion}"?`)) {
-      const result = await eliminarProductoLubricentro(id);
-      if (result.success) {
-        cargarProductos();
-      } else {
-        alert("Error al eliminar el producto");
-      }
+  const handleEliminar = async (p: ProductoLubricentro) => {
+    const ok = await confirm({
+      title: "Eliminar producto",
+      message: (
+        <>
+          ¿Eliminar <strong className="text-white">{p.descripcion || p.codigo}</strong>? Esta acción no se puede
+          deshacer.
+        </>
+      ),
+      confirmLabel: "Eliminar",
+      tone: "danger",
+    });
+    if (!ok) return;
+    const result = await eliminarProductoLubricentro(p.id!);
+    if (result.success) {
+      setProductos((ps) => ps.filter((x) => x.id !== p.id));
+      toast("Producto eliminado");
+    } else {
+      toast(result.error, "error");
     }
   };
 
-  const handleCloseForm = () => {
-    setShowForm(false);
-    setEditingProducto(undefined);
+  const handleAjustar = async (p: ProductoLubricentro, delta: number) => {
+    if (!p.id) return;
+    setAjustando(p.id);
+    // Actualización optimista
+    setProductos((ps) =>
+      ps.map((x) => (x.id === p.id ? { ...x, stock: round2((x.stock || 0) + delta) } : x))
+    );
+    const result = await ajustarStockLubricentro(p.id, delta);
+    setAjustando(null);
+    if (result.success) {
+      setProductos((ps) => ps.map((x) => (x.id === p.id ? { ...x, stock: result.data } : x)));
+    } else {
+      setProductos((ps) => ps.map((x) => (x.id === p.id ? { ...x, stock: p.stock } : x)));
+      toast(result.error, "error");
+    }
   };
+
+  const hayFiltros =
+    searchTerm || categoria !== "Todos" || filtroStock !== "todos" || tipoFiltro !== "Todos";
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
-        {/* Header */}
-        <div className="mb-8 animate-fade-in">
-          <div className="flex items-center space-x-3 mb-2">
-            <div className="bg-red-600 p-2 rounded-lg">
-              <Package className="w-6 h-6 text-white" />
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white">
-              Inventario Lubricentro
-            </h1>
-          </div>
-          <p className="text-gray-400 text-sm sm:text-base">
-            Gestión de productos, stock y precios del lubricentro
-          </p>
-        </div>
-
-        {/* Barra de Acciones */}
-        <div className="bg-neutral-900 rounded-lg p-4 sm:p-6 mb-6 border border-neutral-800 animate-scale-in">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
-            {/* Búsqueda */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                placeholder="Buscar por nombre, marca o ubicación..."
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 pl-10 text-white focus:outline-none focus:ring-2 focus:ring-red-600"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-
-            {/* Botones de Acción */}
-            <div className="flex w-full sm:w-auto gap-2">
-              {/* Botón Reporte de Filtros */}
-              <BotonReporteFiltros />
-
-              {/* Botón Nuevo Producto */}
-              <button
-                onClick={handleNuevoProducto}
-                className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition flex items-center justify-center space-x-2 whitespace-nowrap transform hover:scale-105"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="text-sm sm:text-base">Nuevo Producto</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Categorías */}
-          <div className="mt-4">
-            <p className="text-xs font-semibold text-gray-400 mb-2">
-              CATEGORÍA:
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {["Todos", "Aceites", "Filtros", "Lubricantes", "Aditivos"].map(
-                (cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => {
-                      setSelectedCategory(cat);
-                      if (cat !== "Filtros") {
-                        setSelectedFilterType("Todos");
-                      }
-                    }}
-                    className={`
-                    px-3 py-1.5 rounded-lg text-xs font-medium transition-colors
-                    ${
-                      selectedCategory === cat
-                        ? "bg-red-600 text-white"
-                        : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
-                    }
-                  `}
-                  >
-                    {cat}
-                  </button>
-                )
-              )}
-            </div>
-
-            {/* Subfiltro visible solo para Filtros */}
-            {selectedCategory === "Filtros" && (
-              <div className="mt-4">
-                <p className="text-xs font-semibold text-gray-400 mb-2">
-                  TIPO DE FILTRO:
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {["Todos", "Aire", "Aceite", "Combustible", "Habitáculo"].map(
-                    (tipo) => (
-                      <button
-                        key={tipo}
-                        onClick={() => setSelectedFilterType(tipo)}
-                        className={`
-                          px-3 py-1.5 rounded-lg text-xs font-medium transition-colors
-                          ${
-                            selectedFilterType === tipo
-                              ? "bg-blue-600 text-white"
-                              : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
-                          }
-                        `}
-                      >
-                        {tipo}
-                      </button>
-                    )
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Tabla de Productos */}
-        {loading ? (
-          <div className="p-6 animate-fade-in">
-            <SkeletonLoader />
-          </div>
-        ) : filteredProductos.length === 0 ? (
-          <div className="bg-neutral-900 rounded-lg p-12 text-center border border-neutral-800 animate-scale-in">
-            <Package className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-            <p className="text-gray-400 text-lg">
-              {searchTerm || selectedCategory !== "Todos"
-                ? "No se encontraron productos con esos filtros"
-                : "No hay productos registrados"}
-            </p>
-            <button
-              onClick={handleNuevoProducto}
-              className="mt-4 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors transform hover:scale-105"
-            >
-              Agregar Primer Producto
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:py-8">
+      <PageHeader
+        icon={Package}
+        title="Lubricentro"
+        description="Productos, stock y precios"
+        actions={
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+            <button onClick={handleNuevo} className="btn btn-primary sm:order-last">
+              <Plus className="h-4 w-4" />
+              Nuevo producto
             </button>
+            <button onClick={() => setShowIngreso(true)} className="btn btn-secondary">
+              <PackagePlus className="h-4 w-4" />
+              Ingreso
+            </button>
+            <button
+              onClick={() => setShowPrecios(true)}
+              disabled={filtrados.length === 0}
+              className="btn btn-secondary"
+              title="Aumentar o bajar precios de los productos filtrados"
+            >
+              <Percent className="h-4 w-4" />
+              Precios
+            </button>
+            <BotonReporteFiltros />
           </div>
-        ) : (
-          <div className="bg-neutral-900 rounded-lg border border-neutral-800 overflow-hidden animate-fade-in">
-            {/* Tabla existente */}
-            {loading ? (
-              <div className="p-6 animate-fade-in">
-                <SkeletonLoader />
-              </div>
-            ) : filteredProductos.length === 0 ? (
-              <div className="bg-neutral-900 rounded-lg p-12 text-center border border-neutral-800 animate-scale-in">
-                <Package className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                <p className="text-gray-400 text-lg">
-                  {searchTerm || selectedCategory !== "Todos"
-                    ? "No se encontraron productos con esos filtros"
-                    : "No hay productos registrados"}
-                </p>
-                <button
-                  onClick={handleNuevoProducto}
-                  className="mt-4 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors transform hover:scale-105"
-                >
-                  Agregar Primer Producto
-                </button>
-              </div>
-            ) : (
-              <>
-                {/* Lista móvil */}
-                <div className="md:hidden divide-y divide-neutral-800">
-                  {currentProductos.map((producto) => (
-                    <div key={producto.id} className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-xs text-gray-400 font-mono">
-                            {producto.codigo || "-"}
-                          </div>
-                          <div className="text-white font-medium mt-0.5 truncate">
-                            {producto.descripcion || "-"}
-                          </div>
-                          <div className="text-sm text-gray-300 mt-0.5">
-                            {producto.marca || "-"}
-                          </div>
-                          <div className="mt-1">
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                producto.categoria === "Aceites"
-                                  ? "bg-blue-500/20 text-blue-400"
-                                  : producto.categoria === "Aditivos"
-                                  ? "bg-green-500/20 text-green-400"
-                                  : producto.categoria === "Refrigerantes"
-                                  ? "bg-purple-500/20 text-purple-400"
-                                  : "bg-neutral-700 text-neutral-300"
-                              }`}
-                            >
-                              {producto.categoria || "-"}
-                            </span>
-                          </div>
-                          <div className="mt-2 text-sm text-gray-300 flex flex-wrap items-center gap-x-3 gap-y-1">
-                            <span>
-                              Stock:{" "}
-                              <span className="text-white font-semibold">
-                                {producto.stock || 0}
-                              </span>
-                            </span>
-                            <span className="whitespace-nowrap">
-                              Costo:{" "}
-                              {producto.precioCosto
-                                ? new Intl.NumberFormat("es-AR", {
-                                    style: "currency",
-                                    currency: "ARS",
-                                    minimumFractionDigits: 0,
-                                  }).format(producto.precioCosto)
-                                : "-"}
-                            </span>
-                            <span className="whitespace-nowrap">
-                              Venta:{" "}
-                              {producto.precioVenta
-                                ? new Intl.NumberFormat("es-AR", {
-                                    style: "currency",
-                                    currency: "ARS",
-                                    minimumFractionDigits: 0,
-                                  }).format(producto.precioVenta)
-                                : "-"}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="shrink-0 flex items-center gap-2">
-                          <button
-                            onClick={() => handleEditarProducto(producto)}
-                            className="p-2 hover:bg-neutral-800 rounded-lg text-blue-400"
-                            title="Editar"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() =>
-                              handleEliminarProducto(
-                                producto.id!,
-                                producto.descripcion || "Producto"
-                              )
-                            }
-                            className="p-2 hover:bg-neutral-800 rounded-lg text-red-400"
-                            title="Eliminar"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+        }
+      />
 
-                {/* Tabla escritorio */}
-                <div className="hidden md:block overflow-x-auto animate-fade-in">
-                  <table className="w-full">
-                    <thead className="bg-neutral-800 border-b border-neutral-700">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                          Código
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                          Descripción
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                          Marca
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                          Categoría
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                          Stock
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                          P. Costo
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                          P. Venta
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                          Acciones
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-neutral-800">
-                      {currentProductos.map((producto) => (
-                        <tr
-                          key={producto.id}
-                          className="hover:bg-neutral-800/50 transition-colors"
-                        >
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-300">
-                            {producto.codigo || "-"}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm text-white font-medium">
-                              {producto.descripcion || "-"}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                            {producto.marca || "-"}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span
-                              className={`
-                  inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                  ${
-                    producto.categoria === "Aceites"
-                      ? "bg-blue-500/20 text-blue-400"
-                      : producto.categoria === "Aditivos"
-                      ? "bg-green-500/20 text-green-400"
-                      : producto.categoria === "Refrigerantes"
-                      ? "bg-purple-500/20 text-purple-400"
-                      : "bg-neutral-700 text-neutral-300"
-                  }
-                `}
-                            >
-                              {producto.categoria || "-"}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                            <span className="font-semibold">
-                              {producto.stock || 0}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                            {producto.precioCosto
-                              ? new Intl.NumberFormat("es-AR", {
-                                  style: "currency",
-                                  currency: "ARS",
-                                  minimumFractionDigits: 0,
-                                }).format(producto.precioCosto)
-                              : "-"}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                            {producto.precioVenta
-                              ? new Intl.NumberFormat("es-AR", {
-                                  style: "currency",
-                                  currency: "ARS",
-                                  minimumFractionDigits: 0,
-                                }).format(producto.precioVenta)
-                              : "-"}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <div className="flex space-x-2">
-                              <button
-                                onClick={() => handleEditarProducto(producto)}
-                                className="text-red-500 hover:text-red-700 transition-colors"
-                              >
-                                <Edit className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() =>
-                                  handleEliminarProducto(
-                                    producto.id!,
-                                    producto.descripcion || "Producto"
-                                  )
-                                }
-                                className="text-red-500 hover:text-red-700 transition-colors"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+      {/* Filtros */}
+      <div className="card mb-4 space-y-4 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <SearchInput
+            value={searchTerm}
+            onChange={cambiarFiltro(setSearchTerm)}
+            placeholder="Buscar por código, descripción, marca, vehículo o ubicación..."
+          />
+          <select
+            value={orden}
+            onChange={(e) => setOrden(e.target.value as Orden)}
+            className="input sm:w-52"
+            aria-label="Ordenar"
+          >
+            <option value="recientes">Más recientes</option>
+            <option value="descripcion">Descripción (A-Z)</option>
+            <option value="stock">Menor stock primero</option>
+            <option value="precio">Mayor precio primero</option>
+          </select>
+        </div>
 
-                {/* Controles de paginación */}
-                {totalPages > 1 && (
-                  <div className="bg-neutral-800 px-4 py-3 border-t border-neutral-700">
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                      {/* Información de página */}
-                      <div className="text-sm text-gray-400">
-                        Mostrando {indexOfFirstItem + 1} a{" "}
-                        {Math.min(indexOfLastItem, filteredProductos.length)} de{" "}
-                        {filteredProductos.length} productos
-                      </div>
+        <FilterChips
+          label="Categoría"
+          value={categoria}
+          onChange={(v) => {
+            cambiarFiltro(setCategoria)(v);
+            if (v !== "Filtros") setTipoFiltro("Todos");
+          }}
+          options={[
+            { value: "Todos", label: "Todas", count: porBusqueda.length },
+            ...categoriasPresentes.map((c) => ({
+              value: c,
+              label: c,
+              count: porBusqueda.filter((p) => p.categoria === c).length,
+            })),
+          ]}
+        />
 
-                      {/* Botones de navegación */}
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setCurrentPage(1)}
-                          disabled={currentPage === 1}
-                          className="p-2 rounded-lg bg-neutral-700 text-white hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          title="Primera página"
-                        >
-                          <ChevronsLeft className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                          disabled={currentPage === 1}
-                          className="p-2 rounded-lg bg-neutral-700 text-white hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          title="Página anterior"
-                        >
-                          <ChevronLeft className="w-4 h-4" />
-                        </button>
-
-                        {/* Indicador de página */}
-                        <div className="px-4 py-2 bg-neutral-700 rounded-lg text-white text-sm font-medium">
-                          {currentPage} / {totalPages}
-                        </div>
-
-                        <button
-                          onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                          disabled={currentPage === totalPages}
-                          className="p-2 rounded-lg bg-neutral-700 text-white hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          title="Página siguiente"
-                        >
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setCurrentPage(totalPages)}
-                          disabled={currentPage === totalPages}
-                          className="p-2 rounded-lg bg-neutral-700 text-white hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          title="Última página"
-                        >
-                          <ChevronsRight className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+        {categoria === "Filtros" && (
+          <FilterChips
+            label="Tipo de filtro"
+            value={tipoFiltro}
+            onChange={cambiarFiltro(setTipoFiltro)}
+            options={[
+              { value: "Todos", label: "Todos" },
+              ...TIPOS_FILTRO.map((t) => ({
+                value: t,
+                label: t,
+                count: porBusqueda.filter((p) => p.categoria === "Filtros" && tipoFiltroDe(p) === t).length,
+              })),
+            ]}
+          />
         )}
+
+        <FilterChips
+          label="Stock"
+          value={filtroStock}
+          onChange={cambiarFiltro(setFiltroStock)}
+          options={[
+            { value: "todos", label: "Todos" },
+            { value: "bajo", label: "Stock bajo", count: conteoStock.bajo },
+            { value: "sin", label: "Sin stock", count: conteoStock.sin },
+          ]}
+        />
       </div>
 
-      {/* Modal de formulario */}
+      {/* Resumen del listado */}
+      {!loading && filtrados.length > 0 && (
+        <div className="mb-4 grid grid-cols-2 gap-3 text-sm sm:flex sm:flex-wrap sm:gap-6">
+          <div className="card px-3 py-2 sm:border-0 sm:bg-transparent sm:p-0">
+            <span className="text-neutral-500">Valor a costo: </span>
+            <span className="font-semibold text-white tabular">{formatCurrency(valorFiltrado.costo)}</span>
+          </div>
+          <div className="card px-3 py-2 sm:border-0 sm:bg-transparent sm:p-0">
+            <span className="text-neutral-500">Valor a venta: </span>
+            <span className="font-semibold text-white tabular">{formatCurrency(valorFiltrado.venta)}</span>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <ListSkeleton />
+      ) : filtrados.length === 0 ? (
+        <EmptyState
+          icon={Package}
+          title={hayFiltros ? "No se encontraron productos con esos filtros" : "No hay productos registrados"}
+          action={
+            hayFiltros ? (
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setSearchTerm("");
+                  setCategoria("Todos");
+                  setTipoFiltro("Todos");
+                  setFiltroStock("todos");
+                  setPage(1);
+                }}
+              >
+                Limpiar filtros
+              </button>
+            ) : (
+              <button onClick={handleNuevo} className="btn btn-primary">
+                <Plus className="h-4 w-4" /> Agregar primer producto
+              </button>
+            )
+          }
+        />
+      ) : (
+        <>
+          {/* Mobile: tarjetas */}
+          <div className="space-y-2.5 md:hidden">
+            {visibles.map((p) => {
+              const margen = calcularMargen(p.precioCosto, p.precioVenta);
+              return (
+                <div key={p.id} className="card p-3.5 animate-fade-in">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        {p.codigo && <span className="font-mono text-xs text-neutral-400">{p.codigo}</span>}
+                        <CategoriaBadge categoria={p.categoria} />
+                      </div>
+                      <p className="mt-1 leading-snug font-medium text-white">{p.descripcion || "-"}</p>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-neutral-400">
+                        {p.marca && <span>{p.marca}</span>}
+                        {p.ubicacion && (
+                          <span className="inline-flex items-center gap-0.5">
+                            <MapPin className="h-3 w-3" />
+                            {p.ubicacion}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-white tabular">
+                        {p.precioVenta ? formatCurrency(p.precioVenta) : "-"}
+                      </p>
+                      <p className="text-[11px] text-neutral-500 tabular">
+                        Costo {p.precioCosto ? formatCurrency(p.precioCosto) : "-"}
+                      </p>
+                      {margen != null && (
+                        <p className={cn("text-[11px] tabular", margen < 0 ? "text-red-400" : "text-emerald-400")}>
+                          Margen {formatPercent(margen)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between border-t border-neutral-800 pt-3">
+                    <StockStepper producto={p} onAjustar={handleAjustar} ocupado={ajustando === p.id} />
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => handleEditar(p)} className="icon-btn text-sky-400" aria-label="Editar">
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleEliminar(p)}
+                        className="icon-btn text-red-400"
+                        aria-label="Eliminar"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Escritorio: tabla */}
+          <div className="card hidden overflow-hidden md:block">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="border-b border-neutral-800 bg-neutral-950/60">
+                  <tr>
+                    <th className="th">Código</th>
+                    <th className="th">Descripción</th>
+                    <th className="th">Categoría</th>
+                    <th className="th text-center">Stock</th>
+                    <th className="th text-right">Costo</th>
+                    <th className="th text-right">Venta</th>
+                    <th className="th text-right">Margen</th>
+                    <th className="th text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-800">
+                  {visibles.map((p) => {
+                    const margen = calcularMargen(p.precioCosto, p.precioVenta);
+                    return (
+                      <tr key={p.id} className="transition-colors hover:bg-neutral-800/40">
+                        <td className="td font-mono whitespace-nowrap text-neutral-300">{p.codigo || "-"}</td>
+                        <td className="td max-w-md">
+                          <p className="font-medium text-white">{p.descripcion || "-"}</p>
+                          <p className="text-xs text-neutral-500">
+                            {[p.marca, p.ubicacion && `📍 ${p.ubicacion}`].filter(Boolean).join(" · ") || ""}
+                          </p>
+                        </td>
+                        <td className="td whitespace-nowrap">
+                          <CategoriaBadge categoria={p.categoria} />
+                        </td>
+                        <td className="td text-center whitespace-nowrap">
+                          <StockStepper producto={p} onAjustar={handleAjustar} ocupado={ajustando === p.id} />
+                        </td>
+                        <td className="td text-right whitespace-nowrap text-neutral-300 tabular">
+                          {p.precioCosto ? formatCurrency(p.precioCosto) : "-"}
+                        </td>
+                        <td className="td text-right font-semibold whitespace-nowrap text-white tabular">
+                          {p.precioVenta ? formatCurrency(p.precioVenta) : "-"}
+                        </td>
+                        <td
+                          className={cn(
+                            "td text-right whitespace-nowrap tabular",
+                            margen == null ? "text-neutral-600" : margen < 0 ? "text-red-400" : "text-emerald-400"
+                          )}
+                        >
+                          {formatPercent(margen)}
+                        </td>
+                        <td className="td text-right whitespace-nowrap">
+                          <button onClick={() => handleEditar(p)} className="icon-btn text-sky-400" aria-label="Editar">
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleEliminar(p)}
+                            className="icon-btn text-red-400"
+                            aria-label="Eliminar"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <Pagination
+            page={paginaActual}
+            totalPages={totalPages}
+            totalItems={filtrados.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+            itemLabel="productos"
+          />
+        </>
+      )}
+
+      {showPrecios && (
+        <AumentoPreciosModal
+          productos={filtrados}
+          alcance={
+            hayFiltros
+              ? `Se aplica a los ${filtrados.length} productos filtrados${
+                  categoria !== "Todos" ? ` (${categoria}${tipoFiltro !== "Todos" ? ` · ${tipoFiltro}` : ""})` : ""
+                }${searchTerm ? ` que coinciden con “${searchTerm}”` : ""}`
+              : `Se aplica a TODOS los productos (${filtrados.length}). Usá los filtros para elegir categoría o marca.`
+          }
+          onClose={() => setShowPrecios(false)}
+          onDone={cargarProductos}
+        />
+      )}
+
+      {showIngreso && (
+        <IngresoMercaderiaModal
+          productos={productos}
+          onClose={() => setShowIngreso(false)}
+          onDone={cargarProductos}
+        />
+      )}
+
       {showForm && (
         <ProductoLubricentroForm
-          producto={editingProducto}
-          onClose={handleCloseForm}
-          onSuccess={(productoGuardado) => {
-            setUltimoProducto(productoGuardado);
+          producto={editing}
+          onClose={() => {
+            setShowForm(false);
+            setEditing(undefined);
+          }}
+          onSuccess={(guardado) => {
+            setUltimoProducto(guardado);
             cargarProductos();
           }}
         />

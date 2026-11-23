@@ -1,501 +1,496 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import {
-  Search,
-  Plus,
-  Edit2,
-  Trash2,
-  FileText,
-  ChevronLeft,
-  ChevronRight,
-  Calendar,
-  DollarSign,
-} from "lucide-react";
-import { Anotacion, TIPOS_ANOTACION } from "@/types/anotaciones";
-import { obtenerAnotaciones, eliminarAnotacion, cancelarAnotacion } from "@/actions/anotaciones";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, Edit2, FileText, Plus, Receipt, Trash2, TrendingUp, Wallet } from "lucide-react";
 import AnotacionForm from "@/components/AnotacionForm";
+import { useFeedback } from "@/components/ui/Feedback";
+import {
+  EmptyState,
+  FilterChips,
+  ListSkeleton,
+  PageHeader,
+  Pagination,
+  SearchInput,
+  StatCard,
+} from "@/components/ui";
+import { Anotacion, ETIQUETAS_TIPO, esGasto, TIPOS_ANOTACION, TipoAnotacion } from "@/types/anotaciones";
+import {
+  cancelarAnotacion,
+  eliminarAnotacion,
+  obtenerAnotaciones,
+  obtenerAnotacionesPorRango,
+} from "@/actions/anotaciones";
+import {
+  coincideBusqueda,
+  formatCurrency,
+  formatFecha,
+  formatFechaCorta,
+  formatNumber,
+  hoyISO,
+  mesDe,
+  semanaDe,
+  sumarDias,
+} from "@/lib/format";
+import { calcularResumen, gananciaAnotacion, subtotalItem } from "@/lib/resumen";
+import { cn } from "@/lib/utils";
+
+const PAGE_SIZE = 15;
+
+const TIPO_STYLE: Record<TipoAnotacion, string> = {
+  LUBRICENTRO: "bg-sky-500/15 text-sky-300 ring-sky-500/30",
+  TALLER: "bg-violet-500/15 text-violet-300 ring-violet-500/30",
+  GASTOS_ALQUILER: "bg-amber-500/15 text-amber-300 ring-amber-500/30",
+  OTRO: "bg-neutral-700/50 text-neutral-300 ring-neutral-600",
+};
+
+function TipoBadge({ tipo }: { tipo: TipoAnotacion }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1",
+        TIPO_STYLE[tipo] || TIPO_STYLE.OTRO
+      )}
+    >
+      {ETIQUETAS_TIPO[tipo] || tipo}
+    </span>
+  );
+}
+
+type Periodo = "todo" | "hoy" | "semana" | "mes" | "mesPasado";
+
+function rangoDe(periodo: Periodo): { inicio: string; fin: string } | null {
+  const hoy = hoyISO();
+  if (periodo === "hoy") return { inicio: hoy, fin: hoy };
+  if (periodo === "semana") return semanaDe(hoy);
+  if (periodo === "mes") return mesDe(hoy);
+  if (periodo === "mesPasado") return mesDe(sumarDias(mesDe(hoy).inicio, -1));
+  return null;
+}
+
+function DetalleItems({ anotacion }: { anotacion: Anotacion }) {
+  const gasto = esGasto(anotacion.tipo);
+  return (
+    <div className="space-y-1.5">
+      {anotacion.items.map((it, i) => (
+        <div key={i} className="flex items-start justify-between gap-3 text-sm">
+          <div className="min-w-0">
+            <p className="text-neutral-200">{it.descripcion || "-"}</p>
+            <p className="text-xs text-neutral-500 tabular">
+              {formatNumber(it.cantidad || 1)} × {formatCurrency(it.precio)}
+              {!gasto && it.precioCosto ? ` · costo ${formatCurrency(it.precioCosto)}` : ""}
+            </p>
+          </div>
+          <span className="shrink-0 font-medium text-white tabular">{formatCurrency(subtotalItem(it))}</span>
+        </div>
+      ))}
+      {anotacion.descripcion && (
+        <p className="border-t border-neutral-800 pt-2 text-xs whitespace-pre-line text-neutral-400">
+          {anotacion.descripcion}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default function AnotacionesPage() {
+  const { toast, choose, confirm } = useFeedback();
   const [anotaciones, setAnotaciones] = useState<Anotacion[]>([]);
-  const [filteredAnotaciones, setFilteredAnotaciones] = useState<Anotacion[]>(
-    []
-  );
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedTipo, setSelectedTipo] = useState("Todos");
+  const [tipo, setTipo] = useState("Todos");
+  const [periodo, setPeriodo] = useState<Periodo>("mes");
+  const [page, setPage] = useState(1);
+  const [expandida, setExpandida] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [editingAnotacion, setEditingAnotacion] = useState<
-    Anotacion | undefined
-  >();
-  const [loading, setLoading] = useState(true);
-
-  // Paginación
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
-
-  // Cargar anotaciones
-  const cargarAnotaciones = async () => {
-    setLoading(true);
-    const result = await obtenerAnotaciones();
-    if (result.success && result.data) {
-      setAnotaciones(result.data);
-      setFilteredAnotaciones(result.data);
-    }
-    setLoading(false);
-  };
+  const [editing, setEditing] = useState<Anotacion | undefined>();
+  // Se piden a Firestore sólo las anotaciones del período elegido (no todo el historial).
+  // "version" fuerza recargar después de crear/editar/borrar.
+  const [version, setVersion] = useState(0);
+  const [cargadoPara, setCargadoPara] = useState("");
+  const claveCarga = `${periodo}|${version}`;
+  const loading = cargadoPara !== claveCarga;
 
   useEffect(() => {
-    cargarAnotaciones();
-  }, []);
-
-  // Filtrar anotaciones
-  useEffect(() => {
-    let filtered = anotaciones;
-
-    // Filtrar por búsqueda
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (anotacion) =>
-          anotacion.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          anotacion.descripcion
-            .toLowerCase()
-            .includes(searchTerm.toLowerCase()) ||
-          anotacion.items.some((item) =>
-            item.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
-          )
-      );
-    }
-
-    // Filtrar por tipo
-    if (selectedTipo !== "Todos") {
-      filtered = filtered.filter(
-        (anotacion) => anotacion.tipo === selectedTipo
-      );
-    }
-
-    setFilteredAnotaciones(filtered);
-    setCurrentPage(1);
-  }, [searchTerm, selectedTipo, anotaciones]);
-
-  // Calcular items de la página actual
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentAnotaciones = filteredAnotaciones.slice(
-    indexOfFirstItem,
-    indexOfLastItem
-  );
-  const totalPages = Math.ceil(filteredAnotaciones.length / itemsPerPage);
-
-  // Cambiar de página
-  const nextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
-    }
-  };
-
-  const prevPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
-    }
-  };
-
-  // Abrir formulario para nueva anotación
-  const handleNuevo = () => {
-    setEditingAnotacion(undefined);
-    setShowForm(true);
-  };
-
-  // Abrir formulario para editar
-  const handleEditar = (anotacion: Anotacion) => {
-    setEditingAnotacion(anotacion);
-    setShowForm(true);
-  };
-
-  // Eliminar anotación
-  const handleEliminar = async (id: string, titulo: string) => {
-    // Modal simple por prompt: 1) Cancelar (restablecer stock) 2) Eliminar (sin tocar stock)
-    const opcion = prompt(
-      `Acción sobre "${titulo}":\n- Escribí 1 para CANCELAR (repone stock y elimina)\n- Escribí 2 para ELIMINAR (sin reponer stock)`,
-      "1"
-    );
-    if (opcion === null) return;
-    if (opcion !== "1" && opcion !== "2") {
-      alert("Opción inválida. Usa 1 o 2.");
-      return;
-    }
-
-    const useCancelar = opcion === "1";
-    const result = useCancelar
-      ? await cancelarAnotacion(id)
-      : await eliminarAnotacion(id);
-    if (result.success) {
-      cargarAnotaciones();
-    } else {
-      alert(result.error || "Error al procesar la solicitud");
-    }
-  };
-
-  // Cerrar formulario
-  const handleCloseForm = () => {
-    setShowForm(false);
-    setEditingAnotacion(undefined);
-  };
-
-  // Formatear fecha
-  const formatearFecha = (fecha: string) => {
-    const date = new Date(fecha);
-    return date.toLocaleDateString("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
+    let activo = true;
+    const rango = rangoDe(periodo);
+    const pedido = rango ? obtenerAnotacionesPorRango(rango.inicio, rango.fin) : obtenerAnotaciones();
+    pedido.then((result) => {
+      if (!activo) return;
+      if (result.success) {
+        // Más recientes primero (el filtro por rango devuelve en orden ascendente)
+        const ordenadas = [...result.data].sort(
+          (a, b) =>
+            b.fecha.localeCompare(a.fecha) ||
+            new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+        );
+        setAnotaciones(ordenadas);
+      } else {
+        toast(result.error, "error");
+      }
+      setCargadoPara(`${periodo}|${version}`);
     });
-  };
+    return () => {
+      activo = false;
+    };
+  }, [periodo, version, toast]);
 
-  // Formatear tipo
-  const formatearTipo = (tipo: string) => {
-    return tipo.replace(/_/g, " ");
-  };
+  const cargar = () => setVersion((v) => v + 1);
 
-  // Truncar descripción larga con puntos suspensivos
-  const truncarDescripcion = (texto?: string, max: number = 120) => {
-    if (!texto) return "-";
-    if (texto.length <= max) return texto;
-    return texto.slice(0, max).trimEnd() + "…";
-  };
+  // Acceso directo del ícono instalado ("Nueva anotación"): /anotaciones?nueva=1
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("nueva")) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    const t = setTimeout(() => setShowForm(true), 0);
+    return () => clearTimeout(t);
+  }, []);
+  const porPeriodo = anotaciones;
 
-  // Calcular total de todas las anotaciones filtradas
-  const totalGeneral = filteredAnotaciones.reduce(
-    (sum, anotacion) => sum + (anotacion.total || 0),
-    0
+  const porBusqueda = useMemo(
+    () =>
+      porPeriodo.filter((a) =>
+        coincideBusqueda(searchTerm, a.titulo, a.descripcion, ...a.items.map((it) => it.descripcion))
+      ),
+    [porPeriodo, searchTerm]
   );
+
+  const filtradas = useMemo(
+    () => (tipo === "Todos" ? porBusqueda : porBusqueda.filter((a) => a.tipo === tipo)),
+    [porBusqueda, tipo]
+  );
+
+  const resumen = useMemo(() => calcularResumen(filtradas), [filtradas]);
+
+  const totalPages = Math.max(1, Math.ceil(filtradas.length / PAGE_SIZE));
+  const paginaActual = Math.min(page, totalPages);
+  const visibles = filtradas.slice((paginaActual - 1) * PAGE_SIZE, paginaActual * PAGE_SIZE);
+
+  const handleNuevo = () => {
+    setEditing(undefined);
+    setShowForm(true);
+  };
+
+  const handleEditar = (a: Anotacion) => {
+    setEditing(a);
+    setShowForm(true);
+  };
+
+  const handleEliminar = async (a: Anotacion) => {
+    const descuentaStock = a.tipo === "LUBRICENTRO" && a.items.some((it) => it.productoId);
+    let accion: string | null;
+
+    if (descuentaStock) {
+      accion = await choose({
+        title: "Eliminar anotación",
+        message: (
+          <>
+            <strong className="text-white">{a.titulo}</strong> descontó stock de productos del inventario. ¿Qué
+            querés hacer?
+          </>
+        ),
+        tone: "warning",
+        actions: [
+          {
+            value: "cancelar",
+            label: "Anular venta y devolver stock",
+            description: "Recomendado: los productos vuelven al inventario.",
+            tone: "primary",
+          },
+          {
+            value: "eliminar",
+            label: "Borrar sin devolver stock",
+            description: "Sólo si el stock ya se corrigió a mano.",
+            tone: "danger",
+          },
+        ],
+      });
+    } else {
+      accion = (await confirm({
+        title: "Eliminar anotación",
+        message: (
+          <>
+            ¿Eliminar <strong className="text-white">{a.titulo}</strong>? Esta acción no se puede deshacer.
+          </>
+        ),
+        confirmLabel: "Eliminar",
+        tone: "danger",
+      }))
+        ? "eliminar"
+        : null;
+    }
+    if (!accion) return;
+
+    const result = accion === "cancelar" ? await cancelarAnotacion(a.id!) : await eliminarAnotacion(a.id!);
+    if (result.success) {
+      setAnotaciones((as) => as.filter((x) => x.id !== a.id));
+      toast(accion === "cancelar" ? "Venta anulada y stock devuelto" : "Anotación eliminada");
+    } else {
+      toast(result.error, "error");
+    }
+  };
+
+  const hayFiltros = searchTerm || tipo !== "Todos" || periodo !== "todo";
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-            <div className="flex items-center space-x-3">
-              <div className="bg-red-600 p-2 rounded-lg">
-                <FileText className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-white">Anotaciones</h1>
-                <p className="text-gray-400">
-                  Gestión de gastos y anotaciones del negocio
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleNuevo}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-            >
-              <Plus className="w-5 h-5" />
-              Nueva anotación
-            </button>
-          </div>
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:py-8">
+      <PageHeader
+        icon={FileText}
+        title="Anotaciones"
+        description="Ventas, servicios y gastos del negocio"
+        actions={
+          <button onClick={handleNuevo} className="btn btn-primary w-full sm:w-auto">
+            <Plus className="h-4 w-4" />
+            Nueva anotación
+          </button>
+        }
+      />
 
-          {/* Resumen total */}
-          {filteredAnotaciones.length > 0 && (
-            <div className="bg-neutral-900 border border-red-600/30 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-red-500" />
-                  <span className="text-gray-400">
-                    Total{" "}
-                    {selectedTipo !== "Todos"
-                      ? `(${formatearTipo(selectedTipo)})`
-                      : ""}
-                    :{" "}
-                  </span>
-                </div>
-                <span className="text-2xl font-bold text-red-500">
-                  ${totalGeneral.toFixed(2)}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
+      {/* Resumen del período filtrado */}
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard icon={Receipt} label="Ventas" value={formatCurrency(resumen.totalVentas)} />
+        <StatCard
+          icon={TrendingUp}
+          label="Ganancia"
+          tone="success"
+          value={formatCurrency(resumen.totalGanancia)}
+          hint={resumen.lineasSinCosto > 0 ? `${resumen.lineasSinCosto} item(s) sin costo` : undefined}
+        />
+        <StatCard icon={Wallet} label="Gastos" tone="warning" value={formatCurrency(resumen.totalGastos)} />
+        <StatCard
+          icon={FileText}
+          label="Resultado"
+          tone={resumen.resultadoNeto < 0 ? "danger" : "success"}
+          value={formatCurrency(resumen.resultadoNeto)}
+          hint="Ganancia − gastos"
+        />
+      </div>
 
-        {/* Barra de búsqueda y filtros */}
-        <div className="mb-6 space-y-4">
-          {/* Búsqueda */}
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="text"
-              placeholder="Buscar por título, descripción o items..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-800 rounded-lg pl-12 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-600 transition-all"
-            />
-          </div>
+      {/* Filtros */}
+      <div className="card mb-4 space-y-4 p-4">
+        <SearchInput
+          value={searchTerm}
+          onChange={(v) => {
+            setSearchTerm(v);
+            setPage(1);
+          }}
+          placeholder="Buscar por título, notas o items..."
+        />
+        <FilterChips
+          label="Período"
+          value={periodo}
+          onChange={(v) => {
+            setPeriodo(v as Periodo);
+            setPage(1);
+          }}
+          options={[
+            { value: "hoy", label: "Hoy" },
+            { value: "semana", label: "Esta semana" },
+            { value: "mes", label: "Este mes" },
+            { value: "mesPasado", label: "Mes pasado" },
+            { value: "todo", label: "Todo el historial" },
+          ]}
+        />
+        <FilterChips
+          label="Tipo"
+          value={tipo}
+          onChange={(v) => {
+            setTipo(v);
+            setPage(1);
+          }}
+          options={[
+            { value: "Todos", label: "Todos", count: porBusqueda.length },
+            ...TIPOS_ANOTACION.map((t) => ({
+              value: t,
+              label: ETIQUETAS_TIPO[t],
+              count: porBusqueda.filter((a) => a.tipo === t).length,
+            })),
+          ]}
+        />
+      </div>
 
-          {/* Filtros por tipo */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2">
-            <button
-              onClick={() => setSelectedTipo("Todos")}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
-                selectedTipo === "Todos"
-                  ? "bg-red-600 text-white"
-                  : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
-              }`}
-            >
-              Todos
-            </button>
-            {TIPOS_ANOTACION.map((tipo) => (
-              <button
-                key={tipo}
-                onClick={() => setSelectedTipo(tipo)}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
-                  selectedTipo === tipo
-                    ? "bg-red-600 text-white"
-                    : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
-                }`}
-              >
-                {formatearTipo(tipo)}
+      {loading ? (
+        <ListSkeleton />
+      ) : filtradas.length === 0 ? (
+        <EmptyState
+          icon={FileText}
+          title={hayFiltros ? "No hay anotaciones con esos filtros" : "No hay anotaciones registradas"}
+          action={
+            periodo !== "todo" ? (
+              <button className="btn btn-secondary" onClick={() => setPeriodo("todo")}>
+                Ver todas
               </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Tabla de anotaciones */}
-        {loading ? (
-          <div className="text-center py-12">
-            <p className="text-gray-400">Cargando anotaciones...</p>
-          </div>
-        ) : filteredAnotaciones.length === 0 ? (
-          <div className="bg-neutral-900 rounded-lg p-12 text-center border border-neutral-800">
-            <FileText className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-            <p className="text-gray-400 text-lg">
-              {searchTerm || selectedTipo !== "Todos"
-                ? "No se encontraron anotaciones con los filtros aplicados"
-                : "No hay anotaciones registradas"}
-            </p>
-            {!searchTerm && selectedTipo === "Todos" && (
-              <button
-                onClick={handleNuevo}
-                className="mt-4 inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Crear primera anotación
+            ) : (
+              <button onClick={handleNuevo} className="btn btn-primary">
+                <Plus className="h-4 w-4" /> Crear anotación
               </button>
-            )}
-          </div>
-        ) : (
-          <>
-            {/* Lista móvil */}
-            <div className="md:hidden space-y-3">
-              {currentAnotaciones.map((anotacion) => (
-                <div
-                  key={anotacion.id}
-                  className="bg-neutral-900 border border-neutral-800 rounded-lg p-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-sm text-gray-300">
-                        <Calendar className="w-4 h-4 text-gray-500" />
-                        {formatearFecha(anotacion.fecha)}
+            )
+          }
+        />
+      ) : (
+        <>
+          {/* Mobile: tarjetas desplegables */}
+          <div className="space-y-2.5 md:hidden">
+            {visibles.map((a) => {
+              const abierta = expandida === a.id;
+              const gasto = esGasto(a.tipo);
+              return (
+                <div key={a.id} className="card overflow-hidden animate-fade-in">
+                  <button
+                    type="button"
+                    onClick={() => setExpandida(abierta ? null : a.id!)}
+                    className="flex w-full items-start justify-between gap-3 p-3.5 text-left"
+                    aria-expanded={abierta}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-neutral-400 capitalize">{formatFechaCorta(a.fecha)}</span>
+                        <TipoBadge tipo={a.tipo} />
                       </div>
-                      <div className="mt-1">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-600/20 text-red-400 border border-red-600/30">
-                          {formatearTipo(anotacion.tipo)}
-                        </span>
-                      </div>
-                      <div className="mt-2 text-white font-medium truncate">
-                        {anotacion.titulo}
-                      </div>
-                      <div
-                        className="text-sm text-gray-400 line-clamp-2"
-                        title={anotacion.descripcion || "-"}
-                      >
-                        {truncarDescripcion(anotacion.descripcion, 160)}
-                      </div>
-                      <div className="mt-1 text-sm text-gray-400">
-                        {anotacion.items.length} item
-                        {anotacion.items.length !== 1 ? "s" : ""}
-                      </div>
+                      <p className="mt-1 truncate font-medium text-white">{a.titulo}</p>
+                      <p className="text-xs text-neutral-500">
+                        {a.items.length} item{a.items.length !== 1 ? "s" : ""}
+                      </p>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm font-semibold text-red-500">
-                        ${(anotacion.total || 0).toFixed(2)}
+                    <div className="flex items-center gap-2">
+                      <div className="text-right">
+                        <p className={cn("font-bold tabular", gasto ? "text-amber-300" : "text-white")}>
+                          {gasto ? "−" : ""}
+                          {formatCurrency(a.total)}
+                        </p>
+                        {!gasto && gananciaAnotacion(a.items) !== a.total && (
+                          <p className="text-[11px] text-emerald-400 tabular">
+                            +{formatCurrency(gananciaAnotacion(a.items))}
+                          </p>
+                        )}
                       </div>
-                      <div className="mt-2 flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleEditar(anotacion)}
-                          className="p-2 hover:bg-neutral-700 rounded-lg transition-colors"
-                          title="Editar"
-                        >
-                          <Edit2 className="w-4 h-4 text-blue-400" />
+                      <ChevronDown
+                        className={cn("h-4 w-4 text-neutral-500 transition-transform", abierta && "rotate-180")}
+                      />
+                    </div>
+                  </button>
+                  {abierta && (
+                    <div className="border-t border-neutral-800 bg-neutral-950/50 p-3.5 animate-fade-in">
+                      <DetalleItems anotacion={a} />
+                      <div className="mt-3 flex gap-2">
+                        <button onClick={() => handleEditar(a)} className="btn btn-secondary flex-1">
+                          <Edit2 className="h-4 w-4" /> Editar
                         </button>
-                        <button
-                          onClick={() => handleEliminar(anotacion.id!, anotacion.titulo)}
-                          className="p-2 hover:bg-neutral-700 rounded-lg transition-colors"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="w-4 h-4 text-red-400" />
+                        <button onClick={() => handleEliminar(a)} className="btn btn-secondary flex-1 text-red-400">
+                          <Trash2 className="h-4 w-4" /> Eliminar
                         </button>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
-              ))}
-            </div>
+              );
+            })}
+          </div>
 
-            {/* Tabla escritorio */}
-            <div className="hidden md:block bg-neutral-900 rounded-lg overflow-hidden border border-neutral-800">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-neutral-800 border-b border-neutral-700">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Fecha
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Tipo
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Título
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Descripción
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Items
-                      </th>
-                      <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Total
-                      </th>
-                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">
-                        Acciones
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-800">
-                    {currentAnotaciones.map((anotacion) => (
-                      <tr
-                        key={anotacion.id}
-                        className="hover:bg-neutral-800/50 transition-colors"
+          {/* Escritorio: tabla con filas desplegables */}
+          <div className="card hidden overflow-hidden md:block">
+            <table className="w-full">
+              <thead className="border-b border-neutral-800 bg-neutral-950/60">
+                <tr>
+                  <th className="th w-8" />
+                  <th className="th">Fecha</th>
+                  <th className="th">Tipo</th>
+                  <th className="th">Título</th>
+                  <th className="th text-center">Items</th>
+                  <th className="th text-right">Total</th>
+                  <th className="th text-right">Ganancia</th>
+                  <th className="th text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-800">
+                {visibles.map((a) => {
+                  const abierta = expandida === a.id;
+                  const gasto = esGasto(a.tipo);
+                  const gan = gananciaAnotacion(a.items);
+                  const tieneCosto = a.items.some((it) => it.precioCosto);
+                  return [
+                    <tr
+                      key={a.id}
+                      onClick={() => setExpandida(abierta ? null : a.id!)}
+                      className="cursor-pointer transition-colors hover:bg-neutral-800/40"
+                    >
+                      <td className="td">
+                        <ChevronDown
+                          className={cn("h-4 w-4 text-neutral-500 transition-transform", abierta && "rotate-180")}
+                        />
+                      </td>
+                      <td className="td whitespace-nowrap text-neutral-300 tabular">{formatFecha(a.fecha)}</td>
+                      <td className="td whitespace-nowrap">
+                        <TipoBadge tipo={a.tipo} />
+                      </td>
+                      <td className="td">
+                        <p className="font-medium text-white">{a.titulo}</p>
+                        {a.descripcion && (
+                          <p className="max-w-md truncate text-xs text-neutral-500">{a.descripcion}</p>
+                        )}
+                      </td>
+                      <td className="td text-center text-neutral-400 tabular">{a.items.length}</td>
+                      <td
+                        className={cn(
+                          "td text-right font-semibold whitespace-nowrap tabular",
+                          gasto ? "text-amber-300" : "text-white"
+                        )}
                       >
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2 text-sm text-gray-300">
-                            <Calendar className="w-4 h-4 text-gray-500" />
-                            {formatearFecha(anotacion.fecha)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-600/20 text-red-400 border border-red-600/30">
-                            {formatearTipo(anotacion.tipo)}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm font-medium text-white">
-                            {anotacion.titulo}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div
-                            className="text-sm text-gray-400 max-w-xs truncate"
-                            title={anotacion.descripcion || "-"}
-                          >
-                            {truncarDescripcion(anotacion.descripcion, 120)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-gray-400">
-                            {anotacion.items.length} item
-                            {anotacion.items.length !== 1 ? "s" : ""}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <div className="text-sm font-semibold text-red-500">
-                            ${(anotacion.total || 0).toFixed(2)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <div className="flex items-center justify-center space-x-2">
-                            <button
-                              onClick={() => handleEditar(anotacion)}
-                              className="p-2 hover:bg-neutral-700 rounded-lg transition-colors"
-                              title="Editar"
-                            >
-                              <Edit2 className="w-4 h-4 text-blue-400" />
-                            </button>
-                            <button
-                              onClick={() =>
-                                handleEliminar(anotacion.id!, anotacion.titulo)
-                              }
-                              className="p-2 hover:bg-neutral-700 rounded-lg transition-colors"
-                              title="Eliminar"
-                            >
-                              <Trash2 className="w-4 h-4 text-red-400" />
-                            </button>
+                        {gasto ? "−" : ""}
+                        {formatCurrency(a.total)}
+                      </td>
+                      <td className="td text-right whitespace-nowrap tabular">
+                        {gasto || !tieneCosto ? (
+                          <span className="text-neutral-600">-</span>
+                        ) : (
+                          <span className={gan < 0 ? "text-red-400" : "text-emerald-400"}>{formatCurrency(gan)}</span>
+                        )}
+                      </td>
+                      <td className="td text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => handleEditar(a)} className="icon-btn text-sky-400" aria-label="Editar">
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleEliminar(a)}
+                          className="icon-btn text-red-400"
+                          aria-label="Eliminar"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>,
+                    abierta && (
+                      <tr key={`${a.id}-detalle`} className="bg-neutral-950/50">
+                        <td />
+                        <td colSpan={7} className="px-4 pt-1 pb-4">
+                          <div className="max-w-2xl">
+                            <DetalleItems anotacion={a} />
                           </div>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                    ),
+                  ];
+                })}
+              </tbody>
+            </table>
+          </div>
 
-            {/* Paginación */}
-            {totalPages > 1 && (
-              <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <p className="text-sm text-gray-400">
-                  Mostrando{" "}
-                  <span className="font-medium text-white">
-                    {indexOfFirstItem + 1}
-                  </span>{" "}
-                  a{" "}
-                  <span className="font-medium text-white">
-                    {Math.min(indexOfLastItem, filteredAnotaciones.length)}
-                  </span>{" "}
-                  de{" "}
-                  <span className="font-medium text-white">
-                    {filteredAnotaciones.length}
-                  </span>{" "}
-                  anotaciones
-                </p>
+          <Pagination
+            page={paginaActual}
+            totalPages={totalPages}
+            totalItems={filtradas.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+            itemLabel="anotaciones"
+          />
+        </>
+      )}
 
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={prevPage}
-                    disabled={currentPage === 1}
-                    className="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-
-                  <span className="text-sm text-gray-400">
-                    Página{" "}
-                    <span className="font-medium text-white">
-                      {currentPage}
-                    </span>{" "}
-                    de{" "}
-                    <span className="font-medium text-white">{totalPages}</span>
-                  </span>
-
-                  <button
-                    onClick={nextPage}
-                    disabled={currentPage === totalPages}
-                    className="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Modal de formulario */}
       {showForm && (
         <AnotacionForm
-          anotacion={editingAnotacion}
-          onClose={handleCloseForm}
-          onSuccess={cargarAnotaciones}
+          anotacion={editing}
+          onClose={() => {
+            setShowForm(false);
+            setEditing(undefined);
+          }}
+          onSuccess={cargar}
         />
       )}
     </div>

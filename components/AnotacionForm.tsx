@@ -1,11 +1,31 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
-import { X, Plus, Trash2 } from "lucide-react";
-import { Anotacion, ItemAnotacion, TIPOS_ANOTACION } from "@/types/anotaciones";
-import { crearAnotacion, actualizarAnotacion } from "@/actions/anotaciones";
-import { obtenerProductosLubricentro } from "@/actions/lubricentro";
+
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Plus, Trash2 } from "lucide-react";
+import SelectorProducto from "@/components/SelectorProducto";
+import Modal from "@/components/ui/Modal";
+import NumberInput from "@/components/ui/NumberInput";
+import { useFeedback } from "@/components/ui/Feedback";
+import {
+  Anotacion,
+  ETIQUETAS_TIPO,
+  esGasto,
+  ItemAnotacion,
+  TipoAnotacion,
+  TIPOS_ANOTACION,
+} from "@/types/anotaciones";
 import { ProductoLubricentro } from "@/types/lubricentro";
+import { actualizarAnotacion, crearAnotacion } from "@/actions/anotaciones";
+import { obtenerProductosLubricentro } from "@/actions/lubricentro";
+import {
+  calcularMargen,
+  formatCurrency,
+  formatNumber,
+  formatPercent,
+  hoyISO,
+  round2,
+} from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 interface AnotacionFormProps {
   anotacion?: Anotacion;
@@ -13,593 +33,401 @@ interface AnotacionFormProps {
   onSuccess: () => void;
 }
 
-export default function AnotacionForm({
-  anotacion,
-  onClose,
-  onSuccess,
-}: AnotacionFormProps) {
-  const [mounted, setMounted] = useState(false);
-  const modalRef = useRef<HTMLDivElement>(null);
-  const [formData, setFormData] = useState({
-    fecha: anotacion?.fecha || new Date().toISOString().split("T")[0],
-    tipo: anotacion?.tipo || "LUBRICENTRO",
-    titulo: anotacion?.titulo || "",
-    descripcion: anotacion?.descripcion || "",
-    items: anotacion?.items || [{ descripcion: "", cantidad: 1, precio: 0 }],
-  });
-  const [loading, setLoading] = useState(false);
+interface ItemForm extends ItemAnotacion {
+  key: number;
+}
+
+let nextKey = 1;
+const conKey = (it: ItemAnotacion): ItemForm => ({ ...it, key: nextKey++ });
+const sinKey = (it: ItemForm): ItemAnotacion => {
+  const copia: Partial<ItemForm> = { ...it };
+  delete copia.key;
+  return copia as ItemAnotacion;
+};
+
+const PLACEHOLDER_TITULO: Record<TipoAnotacion, string> = {
+  LUBRICENTRO: "Ej: Cambio de aceite Gol AB123CD",
+  TALLER: "Ej: Service completo Corsa",
+  GASTOS_ALQUILER: "Ej: Alquiler noviembre",
+  OTRO: "Ej: Venta varios",
+};
+
+// ---------------------------------------------------------------------------
+// Formulario
+// ---------------------------------------------------------------------------
+export default function AnotacionForm({ anotacion, onClose, onSuccess }: AnotacionFormProps) {
+  const { toast, confirm } = useFeedback();
+  const esEdicion = Boolean(anotacion?.id);
+
+  const [fecha, setFecha] = useState(anotacion?.fecha || hoyISO());
+  const [tipo, setTipo] = useState<TipoAnotacion>(anotacion?.tipo || "LUBRICENTRO");
+  const [titulo, setTitulo] = useState(anotacion?.titulo || "");
+  const [descripcion, setDescripcion] = useState(anotacion?.descripcion || "");
+  const [items, setItems] = useState<ItemForm[]>(() =>
+    (anotacion?.items?.length ? anotacion.items : [{ descripcion: "", cantidad: 1 }]).map(conKey)
+  );
   const [productos, setProductos] = useState<ProductoLubricentro[]>([]);
-  // Estado para buscador en selector de productos por línea
-  const [queryByIndex, setQueryByIndex] = useState<Record<number, string>>({});
-  const [openDropdownIndex, setOpenDropdownIndex] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const snapshot = JSON.stringify({ fecha, tipo, titulo, descripcion, items: items.map(sinKey) });
+  const [inicial] = useState(snapshot);
+  const isDirty = snapshot !== inicial;
+
+  const gasto = esGasto(tipo);
 
   useEffect(() => {
-    setMounted(true);
-    // Prevent body scroll while modal is open
-    document.body.style.overflow = "hidden";
-
-    // No inicializar queryByIndex para items sin productoId
-    // El campo "Producto del inventario (opcional)" debe estar vacío
-    // hasta que el usuario busque y seleccione un producto
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = "";
-    };
-  }, [onClose, anotacion]);
-
-  // Cargar productos de lubricentro para el autocomplete cuando el tipo sea LUBRICENTRO
-  useEffect(() => {
-    const load = async () => {
-      if (formData.tipo !== "LUBRICENTRO") return;
-      const res = await obtenerProductosLubricentro();
-      if (res.success && res.data) {
-        setProductos(res.data);
-      }
-    };
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.tipo]);
-
-  // Sincronizar productos del inventario cuando se cargan
-  useEffect(() => {
-    if (formData.tipo !== "LUBRICENTRO" || productos.length === 0) return;
-    setQueryByIndex((prev) => {
-      const next: Record<number, string> = { ...prev };
-      formData.items.forEach((it, i) => {
-        if (it.productoId) {
-          // Si tiene productoId, buscar en el inventario y mostrar formato completo
-          const p = productos.find((pp) => pp.id === it.productoId);
-          if (p) {
-            // Siempre actualizar con el formato del producto del inventario
-            next[i] = `${p.codigo} - ${p.descripcion} (${p.marca})`;
-          }
-        }
-        // Los items sin productoId mantienen su valor inicial (descripción manual)
-      });
-      return next;
+    if (tipo !== "LUBRICENTRO" || productos.length > 0) return;
+    obtenerProductosLubricentro().then((res) => {
+      if (res.success) setProductos(res.data);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productos]);
+  }, [tipo, productos.length]);
 
-  // Cerrar dropdown al clickear fuera
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (!modalRef.current) return;
-      const el = modalRef.current;
-      if (openDropdownIndex === null) return;
-      // Si el click no fue dentro del contenedor del modal, igual cerramos por seguridad
-      if (!el.contains(e.target as Node)) {
-        setOpenDropdownIndex(null);
-      }
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpenDropdownIndex(null);
-    }
-    document.addEventListener("mousedown", onClickOutside);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onClickOutside);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [openDropdownIndex]);
+  const productosPorId = useMemo(() => new Map(productos.map((p) => [p.id!, p])), [productos]);
 
-  const calcularTotal = () => {
-    return formData.items.reduce((sum, item) => {
-      return sum + (item.cantidad || 0) * (item.precio || 0);
-    }, 0);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
-    try {
-      // Normalizamos items: nos aseguramos de no enviar precio 0 por accidente
-      const itemsNormalizados = formData.items.map((it) => {
-        const precioNum = typeof it.precio === "number" ? it.precio : NaN;
-        const cantidadNum = typeof it.cantidad === "number" ? it.cantidad : NaN;
-        return {
-          ...it,
-          ...(Number.isFinite(precioNum) ? { precio: precioNum } : {}),
-          ...(Number.isFinite(cantidadNum) ? { cantidad: cantidadNum } : { cantidad: 1 }),
-        };
+  // Stock disponible por producto (al editar, se suma lo que ya tenía esta anotación)
+  const disponible = useMemo(() => {
+    const map = new Map<string, number>();
+    productos.forEach((p) => map.set(p.id!, p.stock || 0));
+    if (anotacion?.tipo === "LUBRICENTRO") {
+      anotacion.items.forEach((it) => {
+        if (it.productoId && map.has(it.productoId)) {
+          map.set(it.productoId, round2(map.get(it.productoId)! + (it.cantidad || 0)));
+        }
       });
-
-      const dataToSend = {
-        ...formData,
-        items: itemsNormalizados,
-        total: itemsNormalizados.reduce(
-          (sum, it) => sum + (it.cantidad || 0) * (it.precio || 0),
-          0
-        ),
-      };
-
-      let result;
-      if (anotacion?.id) {
-        result = await actualizarAnotacion(anotacion.id, dataToSend);
-      } else {
-        result = await crearAnotacion(dataToSend);
-      }
-
-      if (result.success) {
-        onSuccess();
-        onClose();
-      } else {
-        alert(result.error || "Error al guardar la anotación");
-      }
-    } catch (error) {
-      console.error("Error:", error);
-      alert("Error al guardar la anotación");
-    } finally {
-      setLoading(false);
     }
-  };
+    return map;
+  }, [productos, anotacion]);
 
-  const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
-  ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
+  const pedidoPorProducto = useMemo(() => {
+    const map = new Map<string, number>();
+    if (tipo !== "LUBRICENTRO") return map;
+    items.forEach((it) => {
+      if (it.productoId) map.set(it.productoId, round2((map.get(it.productoId) || 0) + (it.cantidad || 0)));
+    });
+    return map;
+  }, [items, tipo]);
 
-  const agregarItem = () => {
-    setFormData((prev) => {
-      const last = prev.items[prev.items.length - 1];
-      // Copiamos la línea anterior según preferencia del usuario
-      const nuevo: ItemAnotacion = last
-        ? {
-            descripcion: last.descripcion || "",
-            cantidad: last.cantidad || 0,
-            precio: last.precio || 0,
-            precioCosto: (last as any).precioCosto,
-            unidad: last.unidad,
-            productoId: last.productoId,
-          }
-        : { descripcion: "", cantidad: 0, precio: 0 };
-      return {
+  const total = round2(items.reduce((s, it) => s + (it.cantidad || 0) * (it.precio || 0), 0));
+  const costoTotal = round2(items.reduce((s, it) => s + (it.cantidad || 0) * (it.precioCosto || 0), 0));
+  const ganancia = round2(total - costoTotal);
+
+  const actualizarItem = (key: number, cambios: Partial<ItemAnotacion>) =>
+    setItems((prev) => prev.map((it) => (it.key === key ? { ...it, ...cambios } : it)));
+
+  const agregarItem = () =>
+    setItems((prev) => {
+      const last = prev[prev.length - 1];
+      // Se copia la línea anterior para cargar más rápido ventas parecidas
+      return [
         ...prev,
-        items: [...prev.items, nuevo],
-      };
+        conKey(
+          last
+            ? {
+                descripcion: last.descripcion,
+                cantidad: last.cantidad || 1,
+                precio: last.precio,
+                precioCosto: last.precioCosto,
+                unidad: last.unidad,
+                productoId: last.productoId,
+              }
+            : { descripcion: "", cantidad: 1 }
+        ),
+      ];
     });
+
+  const eliminarItem = (key: number) => setItems((prev) => prev.filter((it) => it.key !== key));
+
+  const seleccionarProducto = (key: number, p: ProductoLubricentro) =>
+    actualizarItem(key, {
+      productoId: p.id,
+      descripcion: p.categoria === "Filtros" && p.codigo ? `Filtro ${p.codigo}` : p.descripcion,
+      ...(typeof p.precioVenta === "number" && p.precioVenta > 0 ? { precio: p.precioVenta } : {}),
+      ...(typeof p.precioCosto === "number" && p.precioCosto > 0 ? { precioCosto: p.precioCosto } : {}),
+    });
+
+  const pedirCierre = async () => {
+    if (loading) return;
+    if (
+      !isDirty ||
+      (await confirm({
+        title: "¿Salir sin guardar?",
+        message: "Hay cambios sin guardar en esta anotación.",
+        confirmLabel: "Salir sin guardar",
+        cancelLabel: "Seguir editando",
+        tone: "warning",
+      }))
+    ) {
+      onClose();
+    }
   };
 
-  const eliminarItem = (index: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      items: prev.items.filter((_, i) => i !== index),
-    }));
-  };
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
 
-  const actualizarItem = (
-    index: number,
-    field: keyof ItemAnotacion | "precioCosto",
-    value: string | number
-  ) => {
-    setFormData((prev) => ({
-      ...prev,
-      items: prev.items.map((item, i) => {
-        if (i !== index) return item;
-        if (field === "cantidad" || field === "precio" || field === "precioCosto") {
-          const raw = String(value);
-          // Normalizamos formatos: eliminamos separadores de miles y usamos coma como decimal
-          const normalized = raw.replace(/\./g, "").replace(",", ".");
-          const parsed = normalized.trim() === "" ? NaN : Number(normalized);
-          // Si no es número válido, mantenemos el valor anterior (no lo forzamos a 0)
-          const prevNum = ((item as any)[field] as number) ?? 0;
-          const finalNum = Number.isFinite(parsed) ? parsed : prevNum;
-          return {
-            ...item,
-            [field]: finalNum,
-          };
-        }
-        return {
-          ...item,
-          [field]: value,
-        };
+    const validos = items.filter((it) => it.descripcion.trim() || it.productoId);
+    if (validos.length === 0) {
+      toast("Agregá al menos un item con descripción", "error");
+      return;
+    }
+    const sinPrecio = validos.findIndex((it) => it.precio == null);
+    if (sinPrecio !== -1) {
+      toast(`Falta el ${gasto ? "importe" : "precio de venta"} en el item ${sinPrecio + 1}`, "error");
+      return;
+    }
+    const sinCantidad = validos.findIndex((it) => !it.cantidad || it.cantidad <= 0);
+    if (sinCantidad !== -1) {
+      toast(`La cantidad del item ${sinCantidad + 1} debe ser mayor a 0`, "error");
+      return;
+    }
+
+    setLoading(true);
+    const data = {
+      fecha,
+      tipo,
+      titulo: titulo.trim() || validos[0].descripcion.trim(),
+      descripcion,
+      // Si no es de lubricentro, no tiene sentido mantener vínculo con el inventario
+      items: validos.map((item) => {
+        const it = sinKey(item);
+        return tipo === "LUBRICENTRO" ? it : { ...it, productoId: undefined };
       }),
-    }));
+    };
+
+    const result = anotacion?.id ? await actualizarAnotacion(anotacion.id, data) : await crearAnotacion(data);
+    setLoading(false);
+
+    if (result.success) {
+      toast(esEdicion ? "Anotación actualizada" : "Anotación guardada");
+      onSuccess();
+      onClose();
+    } else {
+      toast(result.error || "Error al guardar la anotación", "error");
+    }
   };
 
-  const onSeleccionarProducto = (index: number, productoId: string) => {
-    const prod = productos.find((p) => p.id === productoId);
-    setFormData((prev) => ({
-      ...prev,
-      items: prev.items.map((item, i) =>
-        i === index
-          ? {
-              ...item,
-              productoId,
-              descripcion: prod?.descripcion || item.descripcion,
-              // Si no hay cantidad cargada, por usabilidad dejamos 1 por defecto
-              cantidad: item.cantidad && item.cantidad > 0 ? item.cantidad : 1,
-              // Si el producto tiene precioVenta numérico, lo usamos.
-              // Si NO lo tiene, NO pisamos con 0: dejamos el precio que el usuario haya escrito.
-              ...(typeof prod?.precioVenta === "number"
-                ? { precio: prod!.precioVenta }
-                : {}),
-              // Si el producto tiene precioCosto, lo usamos
-              ...(typeof prod?.precioCosto === "number"
-                ? { precioCosto: prod!.precioCosto }
-                : {}),
-            }
-          : item
-      ),
-    }));
-    // Reflejar selección en el campo de búsqueda y cerrar dropdown
-    setQueryByIndex((q) => ({
-      ...q,
-      [index]: prod ? `${prod.codigo} - ${prod.descripcion} (${prod.marca})` : "",
-    }));
-    setOpenDropdownIndex(null);
-  };
-
-  if (!mounted) return null;
-
-  return createPortal(
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-9999 p-4 animate-fade-in overflow-y-auto"
-      role="dialog"
-      aria-modal="true"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        ref={modalRef}
-        className="bg-neutral-900 rounded-lg max-w-4xl w-full my-8 max-h-[90vh] overflow-y-auto animate-scale-in"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-neutral-800 sticky top-0 bg-neutral-900 z-10">
-          <h2 className="text-xl sm:text-2xl font-bold text-white">
-            {anotacion ? "Editar Anotación" : "Nueva Anotación"}
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors transform hover:scale-110"
-            type="button"
-          >
-            <X className="w-5 h-5 sm:w-6 sm:h-6" />
-          </button>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
-          {/* Fecha, Tipo y Título */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+  return (
+    <Modal
+      size="xl"
+      title={esEdicion ? "Editar anotación" : "Nueva anotación"}
+      onClose={pedirCierre}
+      closeOnBackdrop={!isDirty}
+      footer={
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex items-baseline justify-between gap-4 sm:justify-start">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Fecha *
-              </label>
-              <input
-                type="date"
-                name="fecha"
-                value={formData.fecha}
-                onChange={handleChange}
-                required
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
-              />
+              <p className="text-[11px] text-neutral-500 uppercase">Total</p>
+              <p className="text-2xl font-bold text-white tabular">{formatCurrency(total)}</p>
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Tipo *
-              </label>
-              <select
-                name="tipo"
-                value={formData.tipo}
-                onChange={handleChange}
-                required
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
-              >
-                {TIPOS_ANOTACION.map((tipo) => (
-                  <option key={tipo} value={tipo}>
-                    {tipo.replace("_", " ")}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Título *
-              </label>
-              <input
-                type="text"
-                name="titulo"
-                value={formData.titulo}
-                onChange={handleChange}
-                required
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
-                placeholder="Ej: Compra Aceites Noviembre"
-              />
-            </div>
+            {!gasto && costoTotal > 0 && (
+              <div className="text-right sm:text-left">
+                <p className="text-[11px] text-neutral-500 uppercase">Ganancia</p>
+                <p className={cn("font-semibold tabular", ganancia < 0 ? "text-red-400" : "text-emerald-400")}>
+                  {formatCurrency(ganancia)}{" "}
+                  <span className="text-xs text-neutral-500">({formatPercent(calcularMargen(costoTotal, total))})</span>
+                </p>
+              </div>
+            )}
           </div>
-
-          {/* Descripción */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Descripción
-            </label>
-            <textarea
-              name="descripcion"
-              value={formData.descripcion}
-              onChange={handleChange}
-              rows={2}
-              className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-red-600 transition-all hover:border-red-500"
-              placeholder="Detalles adicionales..."
-            />
-          </div>
-
-          {/* Items */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <label className="block text-sm font-medium text-gray-300">
-                Items *
-              </label>
-              <button
-                type="button"
-                onClick={agregarItem}
-                className="inline-flex items-center gap-1 text-sm bg-red-600/20 hover:bg-red-600/30 text-red-400 px-3 py-1 rounded-lg transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Agregar item
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {formData.items.map((item, index) => (
-                <div
-                  key={index}
-                  className="bg-neutral-800 border border-neutral-700 rounded-lg p-4"
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="flex-1 space-y-3">
-                      {/* Selector de producto (solo para LUBRICENTRO y opcional) */}
-                      {formData.tipo === "LUBRICENTRO" && (
-                        <div className="relative">
-                          <label className="block text-xs text-gray-400 mb-1">
-                            Producto del inventario (opcional)
-                          </label>
-                          <input
-                            type="text"
-                            value={queryByIndex[index] ?? ""}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setQueryByIndex((q) => ({ ...q, [index]: v }));
-                              setOpenDropdownIndex(index);
-                            }}
-                            onFocus={() => setOpenDropdownIndex(index)}
-                            placeholder="Buscar en inventario o dejar vacío para entrada manual"
-                            className="w-full bg-neutral-900 border border-neutral-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
-                          />
-                          {openDropdownIndex === index && (
-                            <div className="absolute z-50 mt-1 w-full max-h-60 overflow-auto bg-neutral-900 border border-neutral-700 rounded-md shadow-lg">
-                              {productos
-                                .filter((p) => {
-                                  const q = (queryByIndex[index] ?? "").toLowerCase();
-                                  if (!q) return true;
-                                  const hay = `${p.codigo} ${p.descripcion} ${p.marca}`.toLowerCase();
-                                  return hay.includes(q);
-                                })
-                                .slice(0, 100)
-                                .map((p) => (
-                                  <button
-                                    type="button"
-                                    key={p.id}
-                                    onClick={() => onSeleccionarProducto(index, p.id!)}
-                                    className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-800"
-                                  >
-                                    {p.codigo} - {p.descripcion} ({p.marca})
-                                    <span className="text-xs text-gray-400">  • Stock: {p.stock}</span>
-                                  </button>
-                                ))}
-                              {productos.filter((p) => {
-                                const q = (queryByIndex[index] ?? "").toLowerCase();
-                                if (!q) return true;
-                                const hay = `${p.codigo} ${p.descripcion} ${p.marca}`.toLowerCase();
-                                return hay.includes(q);
-                              }).length === 0 && (
-                                <div className="px-3 py-2 text-sm text-gray-400">No hay resultados</div>
-                              )}
-                            </div>
-                          )}
-                          {item.productoId && (
-                            <div className="mt-1 text-xs text-green-400">
-                              ✓ Producto seleccionado del inventario
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Campos editables siempre */}
-                      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                        <div className="md:col-span-2">
-                          <label className="block text-xs text-gray-400 mb-1">
-                            Descripción *
-                          </label>
-                          <input
-                            type="text"
-                            value={item.descripcion}
-                            onChange={(e) =>
-                              actualizarItem(index, "descripcion", e.target.value)
-                            }
-                            required
-                            className="w-full bg-neutral-900 border border-neutral-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
-                            placeholder="Ej: Aceite Castrol 5W30"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs text-gray-400 mb-1">
-                            Cantidad *
-                          </label>
-                          <input
-                            type="number"
-                            value={item.cantidad ?? ""}
-                            onChange={(e) =>
-                              actualizarItem(index, "cantidad", e.target.value)
-                            }
-                            step="0.01"
-                            required
-                            className="w-full bg-neutral-900 border border-neutral-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
-                            placeholder="0"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs text-gray-400 mb-1">
-                            Precio Costo
-                          </label>
-                          <input
-                            type="number"
-                            value={(item as any).precioCosto ?? ""}
-                            onChange={(e) =>
-                              actualizarItem(index, "precioCosto", e.target.value)
-                            }
-                            step="0.01"
-                            className="w-full bg-neutral-900 border border-neutral-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
-                            placeholder="0.00"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs text-gray-400 mb-1">
-                            Precio Venta *
-                          </label>
-                          <input
-                            type="number"
-                            value={item.precio ?? ""}
-                            onChange={(e) =>
-                              actualizarItem(index, "precio", e.target.value)
-                            }
-                            step="0.01"
-                            required
-                            className="w-full bg-neutral-900 border border-neutral-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-600"
-                            placeholder="0.00"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Mostrar ganancia calculada si hay precio de costo y venta */}
-                      {(item as any).precioCosto && item.precio && (
-                        <div className="text-xs text-gray-400">
-                          Ganancia unitaria: ${((item.precio || 0) - ((item as any).precioCosto || 0)).toFixed(2)} •
-                          Margen: {(((item.precio || 0) - ((item as any).precioCosto || 0)) / (item.precio || 1) * 100).toFixed(1)}%
-                        </div>
-                      )}
-                    </div>
-
-                    {formData.tipo === "LUBRICENTRO" && item.productoId && (
-                      <div className="mt-6 text-xs text-gray-400 min-w-[140px]">
-                        {(() => {
-                          const p = productos.find((pp) => pp.id === item.productoId);
-                          return p ? `Stock actual: ${p.stock}` : null;
-                        })()}
-                      </div>
-                    )}
-
-                    {formData.items.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => eliminarItem(index)}
-                        className="mt-6 text-red-400 hover:text-red-300 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Subtotal del item */}
-                  {typeof item.cantidad === "number" && item.cantidad > 0 &&
-                    typeof item.precio === "number" && item.precio >= 0 && (
-                    <div className="mt-2 text-right text-sm">
-                      <span className="text-gray-400">
-                        Subtotal: $
-                        {((item.cantidad || 0) * (item.precio || 0)).toFixed(2)}
-                      </span>
-                      {(item as any).precioCosto && (
-                        <span className="text-green-400 ml-3">
-                          Ganancia total: $
-                          {((item.cantidad || 0) * ((item.precio || 0) - ((item as any).precioCosto || 0))).toFixed(2)}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Total */}
-          <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-lg font-semibold text-white">Total:</span>
-              <span className="text-2xl font-bold text-red-500">
-                ${calcularTotal().toFixed(2)}
-              </span>
-            </div>
-          </div>
-
-          {/* Botones */}
-          <div className="flex justify-end gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={loading}
-              className="px-6 py-2 border border-neutral-700 text-gray-300 rounded-lg hover:bg-neutral-800 transition-colors disabled:opacity-50"
-            >
+          <div className="flex gap-3 sm:ml-auto">
+            <button type="button" onClick={pedirCierre} className="btn btn-secondary flex-1 sm:flex-none">
               Cancelar
             </button>
             <button
               type="submit"
+              form="anotacion-form"
               disabled={loading}
-              className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn btn-primary flex-1 sm:min-w-[150px] sm:flex-none"
             >
-              {loading
-                ? "Guardando..."
-                : anotacion
-                ? "Actualizar"
-                : "Crear anotación"}
+              {loading ? "Guardando..." : esEdicion ? "Guardar cambios" : "Guardar"}
             </button>
           </div>
-        </form>
-      </div>
-    </div>,
-    document.body
+        </div>
+      }
+    >
+      <form id="anotacion-form" onSubmit={handleSubmit} className="space-y-5">
+        {/* Tipo */}
+        <div>
+          <span className="label">Tipo</span>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {TIPOS_ANOTACION.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTipo(t)}
+                className={cn(
+                  "rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors",
+                  tipo === t
+                    ? "border-brand-600 bg-brand-600/15 text-white"
+                    : "border-neutral-700 bg-neutral-800 text-neutral-300 hover:border-neutral-600"
+                )}
+                aria-pressed={tipo === t}
+              >
+                {ETIQUETAS_TIPO[t]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <label className="label" htmlFor="a-fecha">Fecha</label>
+            <input
+              id="a-fecha"
+              type="date"
+              value={fecha}
+              onChange={(e) => setFecha(e.target.value)}
+              required
+              className="input"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="label" htmlFor="a-titulo">Título</label>
+            <input
+              id="a-titulo"
+              value={titulo}
+              onChange={(e) => setTitulo(e.target.value)}
+              className="input"
+              placeholder={PLACEHOLDER_TITULO[tipo]}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="label" htmlFor="a-desc">Notas</label>
+          <textarea
+            id="a-desc"
+            value={descripcion}
+            onChange={(e) => setDescripcion(e.target.value)}
+            rows={2}
+            className="input resize-y"
+            placeholder="Cliente, patente, detalles adicionales..."
+          />
+        </div>
+
+        {/* Items */}
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="label mb-0">
+              Items <span className="text-neutral-500">({items.length})</span>
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {items.map((item, index) => {
+              const producto = item.productoId ? productosPorId.get(item.productoId) : undefined;
+              const pedido = item.productoId ? pedidoPorProducto.get(item.productoId) || 0 : 0;
+              const disp = item.productoId ? disponible.get(item.productoId) : undefined;
+              const faltaStock = tipo === "LUBRICENTRO" && disp != null && pedido > disp;
+              const subtotal = round2((item.cantidad || 0) * (item.precio || 0));
+              const margen = calcularMargen(item.precioCosto, item.precio);
+
+              return (
+                <div key={item.key} className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-3 sm:p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-neutral-500">ITEM {index + 1}</span>
+                    {items.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => eliminarItem(item.key)}
+                        className="icon-btn h-8 w-8 text-red-400"
+                        aria-label={`Quitar item ${index + 1}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    {tipo === "LUBRICENTRO" && (
+                      <SelectorProducto
+                        productos={productos}
+                        seleccionado={producto}
+                        onSelect={(p) => seleccionarProducto(item.key, p)}
+                        onClear={() => actualizarItem(item.key, { productoId: undefined })}
+                      />
+                    )}
+
+                    <input
+                      value={item.descripcion}
+                      onChange={(e) => actualizarItem(item.key, { descripcion: e.target.value })}
+                      className="input"
+                      placeholder={gasto ? "Concepto (ej: Alquiler local)" : "Descripción (ej: Aceite 5W30)"}
+                      aria-label={`Descripción del item ${index + 1}`}
+                    />
+
+                    <div className={cn("grid gap-2 sm:gap-3", gasto ? "grid-cols-2" : "grid-cols-3")}>
+                      <div>
+                        <label className="mb-1 block text-xs text-neutral-400">Cantidad</label>
+                        <NumberInput
+                          value={item.cantidad}
+                          onValueChange={(v) => actualizarItem(item.key, { cantidad: v })}
+                          placeholder="1"
+                          className={cn(faltaStock && "border-amber-500")}
+                        />
+                      </div>
+                      {!gasto && (
+                        <div>
+                          <label className="mb-1 block text-xs text-neutral-400">Costo unit.</label>
+                          <NumberInput
+                            money
+                            value={item.precioCosto}
+                            onValueChange={(v) => actualizarItem(item.key, { precioCosto: v })}
+                            placeholder="0"
+                          />
+                        </div>
+                      )}
+                      <div>
+                        <label className="mb-1 block text-xs text-neutral-400">
+                          {gasto ? "Importe unit." : "Venta unit."}
+                        </label>
+                        <NumberInput
+                          money
+                          value={item.precio}
+                          onValueChange={(v) => actualizarItem(item.key, { precio: v })}
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+
+                    {faltaStock && (
+                      <p className="flex items-center gap-1.5 text-xs text-amber-400">
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                        Stock insuficiente: hay {formatNumber(disp)} y se piden {formatNumber(pedido)}.
+                      </p>
+                    )}
+
+                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-neutral-800 pt-2 text-sm">
+                      <span className="text-neutral-400">
+                        Subtotal <span className="font-semibold text-white tabular">{formatCurrency(subtotal)}</span>
+                      </span>
+                      {!gasto && item.precioCosto != null && item.precio != null && (
+                        <span
+                          className={cn(
+                            "text-xs tabular",
+                            (margen ?? 0) < 0 ? "text-red-400" : "text-emerald-400"
+                          )}
+                        >
+                          Ganancia {formatCurrency((item.cantidad || 0) * (item.precio - item.precioCosto))} ·{" "}
+                          {formatPercent(margen)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={agregarItem}
+            className="btn mt-3 w-full border border-dashed border-neutral-700 text-neutral-300 hover:border-brand-600 hover:text-white"
+          >
+            <Plus className="h-4 w-4" />
+            Agregar item
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

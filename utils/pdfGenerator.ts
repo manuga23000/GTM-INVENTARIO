@@ -271,8 +271,8 @@ export async function generarReporteSemanal(
   const resumen = Array.isArray(entrada) ? calcularResumen(entrada, productos) : entrada;
   const productosPorId = new Map(productos.map((p) => [p.id, p]));
 
-  const todas = [...resumen.ventas, ...resumen.gastos];
-  const conCentavos = todas.some((l) => Math.round(l.subtotal * 100) % 100 !== 0 || Math.round(l.precioCosto * 100) % 100 !== 0);
+  // Los gastos no se incluyen en este reporte (solo ventas)
+  const conCentavos = resumen.ventas.some((l) => Math.round(l.subtotal * 100) % 100 !== 0 || Math.round(l.precioCosto * 100) % 100 !== 0);
   const $ = crearFormato(conCentavos);
 
   const doc = new jsPDF({ unit: "mm", format: "a4" });
@@ -289,7 +289,7 @@ export async function generarReporteSemanal(
   // ---------------- Indicadores ----------------
   const kpis: { label: string; valor: string; detalle?: string; color?: RGB }[] = [
     { label: "Ventas", valor: $(resumen.totalVentas), detalle: `${resumen.cantidadOperaciones} operaciones` },
-    { label: "Costo de mercadería", valor: $(resumen.totalCostos), detalle: `${formatNumber(resumen.unidadesVendidas)} unidades` },
+    { label: "Costo de mercadería", valor: $(resumen.totalCostos), detalle: "de lo vendido" },
     {
       label: "Ganancia bruta",
       valor: $(resumen.totalGanancia),
@@ -299,12 +299,11 @@ export async function generarReporteSemanal(
     { label: "Ticket promedio", valor: $(resumen.ticketPromedio), detalle: "por operación" },
     { label: "Margen productos", valor: pctTxt(resumen.margenProductos), detalle: "sobre precio de venta" },
     { label: "Recargo s/ costo", valor: pctTxt(resumen.recargoPromedio), detalle: "markup promedio" },
-    { label: "Gastos", valor: $(resumen.totalGastos), detalle: `${resumen.gastos.length} conceptos`, color: C.amber },
+    { label: "Unidades vendidas", valor: formatNumber(resumen.unidadesVendidas), detalle: "productos y servicios" },
     {
-      label: "Resultado neto",
-      valor: $(resumen.resultadoNeto),
-      detalle: `Margen neto ${pctTxt(resumen.margenNeto)}`,
-      color: resumen.resultadoNeto < 0 ? C.negative : C.green,
+      label: "Servicios / M.O.",
+      valor: $(resumen.ventasServicios),
+      detalle: `${pctTxt(resumen.totalVentas > 0 ? (resumen.ventasServicios / resumen.totalVentas) * 100 : 0)} de las ventas`,
     },
   ];
   const gap = 3;
@@ -335,7 +334,7 @@ export async function generarReporteSemanal(
   y += kh * 2 + gap + 10;
 
   // ---------------- Estado de resultados ----------------
-  y = seccion(doc, "Estado de resultados", y, "% sobre ventas totales");
+  y = seccion(doc, "Resultado de ventas", y, "% sobre ventas totales");
   const pv = (n: number) => pctTxt(resumen.totalVentas > 0 ? (n / resumen.totalVentas) * 100 : 0);
   const filasER: RowInput[] = [];
   if (resumen.ventasProductos) filasER.push(["   Venta de productos", $(resumen.ventasProductos), pv(resumen.ventasProductos)]);
@@ -349,21 +348,15 @@ export async function generarReporteSemanal(
       { content: "100,0%", styles: { fontStyle: "bold" } },
     ],
     ["(-) Costo de mercadería vendida", `-${$(resumen.totalCostos)}`, pv(resumen.totalCostos)],
-    [
-      { content: "Ganancia bruta", styles: { fontStyle: "bold" } },
-      { content: $(resumen.totalGanancia), styles: { fontStyle: "bold" } },
-      { content: pctTxt(resumen.margenPromedio), styles: { fontStyle: "bold" } },
-    ],
-    ["(-) Gastos operativos", `-${$(resumen.totalGastos)}`, pv(resumen.totalGastos)]
   );
   tabla(doc, {
     startY: y,
     body: filasER,
-    foot: [["RESULTADO NETO", $(resumen.resultadoNeto), pctTxt(resumen.margenNeto)]],
+    foot: [["GANANCIA BRUTA", $(resumen.totalGanancia), pctTxt(resumen.margenPromedio)]],
     columnStyles: { 0: { cellWidth: "auto" }, 1: { cellWidth: 40, halign: "right" }, 2: { cellWidth: 28, halign: "right" } },
     footStyles: {
-      fillColor: resumen.resultadoNeto < 0 ? [254, 226, 226] : [220, 252, 231],
-      textColor: resumen.resultadoNeto < 0 ? C.negative : C.green,
+      fillColor: resumen.totalGanancia < 0 ? [254, 226, 226] : [220, 252, 231],
+      textColor: resumen.totalGanancia < 0 ? C.negative : C.green,
       fontStyle: "bold",
       fontSize: 10,
     },
@@ -556,23 +549,9 @@ export async function generarReporteSemanal(
   });
   y = finalY(doc) + 10;
 
-  // ---------------- Gastos ----------------
-  if (resumen.gastos.length > 0) {
-    y = seccion(doc, "Gastos del período", y);
-    tabla(doc, {
-      startY: y,
-      head: [["Fecha", "Concepto", "Detalle", "Importe"]],
-      body: resumen.gastos.map((l) => [diaCorto(l.fecha), l.titulo, l.descripcion !== l.titulo ? l.descripcion : "", $(l.subtotal)]),
-      foot: [["", "TOTAL GASTOS", "", $(resumen.totalGastos)]],
-      columnStyles: { 0: { cellWidth: 24 }, 3: { cellWidth: 32, halign: "right" } },
-      footStyles: { fillColor: [254, 243, 199], textColor: C.amber, fontStyle: "bold" },
-    });
-    y = finalY(doc) + 10;
-  }
-
   // ---------------- Notas ----------------
   const notas: string[] = [
-    "Margen = ganancia / precio de venta.  Recargo = ganancia / costo.  Margen neto = (ganancia bruta - gastos) / ventas.",
+    "Margen = ganancia / precio de venta.  Recargo = ganancia / costo.  Este reporte no incluye gastos (alquiler, servicios, etc.).",
     "M.O.: servicio o mano de obra sin costo de mercadería; su importe completo es ganancia.",
   ];
   if (resumen.lineasEstimadas > 0) {

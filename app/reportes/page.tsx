@@ -91,8 +91,8 @@ export default function ReportesPage() {
   };
 
   const handleGenerar = async () => {
-    if (resumen.ventas.length === 0 && resumen.gastos.length === 0) {
-      toast("No hay anotaciones en el período seleccionado", "warning");
+    if (resumen.ventas.length === 0) {
+      toast("No hay ventas en el período seleccionado", "warning");
       return;
     }
     setGenerando(true);

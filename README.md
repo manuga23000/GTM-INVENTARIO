@@ -52,3 +52,9 @@ NEXT_PUBLIC_FIREBASE_APP_ID=
 - **Aumento masivo de precios** (Lubricentro → Precios): se aplica a los productos filtrados; puede tocar costo, venta o ambos y redondear la venta hacia arriba.
 - **Ingreso de mercadería** (Lubricentro → Ingreso): suma stock y, si se elige, actualiza el costo y recalcula la venta manteniendo el recargo.
 - **Ganancia en reportes**: si un item vendido no tiene costo cargado pero está vinculado a un producto, se estima con el costo actual del producto. La mano de obra cuenta como ganancia completa.
+
+## Publicación
+
+- Se publica automáticamente en **Vercel** con cada push a `main`.
+- Si una publicación no aparece, en Vercel: *Deployments* → ⋯ → **Redeploy**, y verificar en *Settings → Git* que el repositorio siga conectado.
+- Las variables `NEXT_PUBLIC_FIREBASE_*` se cargan en Vercel (*Settings → Environment Variables*), nunca en el repositorio.
